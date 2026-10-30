@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Delivery Address · Rinori Studio</title>
+  <link rel="icon" href="/assets/RINORI%20STUDIO%20logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Sacramento&family=Shrikhand&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="container" style="max-width:760px">
+    <div class="page-title">
+      <span class="script" data-kicker style="font-size:2.6rem">almost there</span>
+      <h1 class="display" data-title>Your Address</h1>
+      <p class="muted" data-sub>Where should we send your little parcels? You can add this now or later. We'll only need it when you place an order.</p>
+    </div>
+
+    <form class="card" id="address-form" novalidate style="margin-bottom:70px">
+      <span class="tape" style="top:-14px;left:40px;transform:rotate(-6deg)"></span>
+      <span class="tape" style="top:-14px;right:40px;transform:rotate(5deg)"></span>
+      <div class="error-box hidden" data-error></div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="fullName">Full name (receiver)</label>
+          <input id="fullName" name="fullName" autocomplete="name" required>
+        </div>
+        <div class="field">
+          <label for="phone">Mobile number</label>
+          <input id="phone" name="phone" type="tel" inputmode="numeric" maxlength="13" placeholder="10-digit number" autocomplete="tel" required>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="house">Flat / House no., Building, Apartment</label>
+        <input id="house" name="house" autocomplete="address-line1" required>
+      </div>
+      <div class="field">
+        <label for="street">Street, Area, Locality / Village</label>
+        <input id="street" name="street" autocomplete="address-line2" required>
+      </div>
+      <div class="field">
+        <label for="landmark">Landmark <span class="opt">(optional, e.g. near Sakura Park)</span></label>
+        <input id="landmark" name="landmark">
+      </div>
+
+      <div class="grid-3">
+        <div class="field">
+          <label for="pincode">Pincode</label>
+          <input id="pincode" name="pincode" inputmode="numeric" maxlength="6" placeholder="6 digits" autocomplete="postal-code" required>
+        </div>
+        <div class="field">
+          <label for="city">City / Town</label>
+          <input id="city" name="city" autocomplete="address-level2" required>
+        </div>
+        <div class="field">
+          <label for="district">District <span class="opt">(optional)</span></label>
+          <input id="district" name="district">
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="state">State / UT</label>
+          <select id="state" name="state" autocomplete="address-level1" required>
+            <option value="">Choose a state</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="altPhone">Alternate number <span class="opt">(optional)</span></label>
+          <input id="altPhone" name="altPhone" type="tel" inputmode="numeric" maxlength="13">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Address type</label>
+        <div class="chips">
+          <label class="chip"><input type="radio" name="type" value="Home" checked><span>🏡 Home</span></label>
+          <label class="chip"><input type="radio" name="type" value="Work"><span>💼 Work</span></label>
+          <label class="chip"><input type="radio" name="type" value="Other"><span>📍 Other</span></label>
+        </div>
+      </div>
+
+      <label class="check" style="margin:6px 0 22px"><input type="checkbox" name="isDefault"> Make this my default address</label>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between;align-items:center">
+        <button class="btn" type="submit">Save address</button>
+        <a class="btn ghost" href="/home" data-skip>I'll add it later</a>
+      </div>
+    </form>
+  </main>
+
+  <script src="/js/common.js"></script>
+  <script>
+    (async () => {
+      const me = await requireUser();
+      renderHeader(me);
+      renderFooter();
+      petals(8);
+
+      const form = document.getElementById('address-form');
+      const editId = qs('id');
+      const next = { cart: '/cart', account: '/account#addresses' }[qs('next')] || '/home';
+      const skip = document.querySelector('[data-skip]');
+
+      form.state.innerHTML += me.states.map(s => `<option>${esc(s)}</option>`).join('');
+
+      if (qs('welcome')) {
+        document.querySelector('[data-kicker]').textContent = `hi ${me.user.name.split(' ')[0]}!`;
+        form.fullName.value = me.user.name;
+        form.phone.value = me.user.phone;
+      } else {
+        document.querySelector('[data-kicker]').textContent = editId ? 'update your' : 'add a new';
+        document.querySelector('[data-sub]').textContent = 'Please fill in the complete address so your parcel reaches you safely.';
+        skip.textContent = 'Cancel';
+        skip.href = next;
+        if (!editId) { form.fullName.value = me.user.name; form.phone.value = me.user.phone; }
+      }
+
+      if (me.user.addresses.length === 0) form.isDefault.checked = true;
+
+      if (editId) {
+        const a = me.user.addresses.find(a => a.id === editId);
+        if (!a) { location.href = next; return; }
+        for (const k of ['fullName', 'phone', 'altPhone', 'house', 'street', 'landmark', 'city', 'district', 'state', 'pincode']) form[k].value = a[k] || '';
+        form.querySelector(`input[name=type][value="${a.type}"]`).checked = true;
+        form.isDefault.checked = a.isDefault;
+      }
+
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const box = form.querySelector('[data-error]');
+        box.classList.add('hidden');
+        const btn = form.querySelector('button[type=submit]');
+        const body = Object.fromEntries(new FormData(form));
+        body.isDefault = form.isDefault.checked;
+        setBusy(btn, true, 'Saving…');
+        try {
+          await api('/api/me/addresses' + (editId ? '/' + editId : ''), { method: editId ? 'PUT' : 'POST', body });
+          toast('Address saved');
+          location.href = next;
+        } catch (err) {
+          box.textContent = err.message;
+          box.classList.remove('hidden');
+          box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setBusy(btn, false);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

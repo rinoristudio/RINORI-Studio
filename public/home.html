@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rinori Studio · Handmade with love</title>
+  <link rel="icon" href="/assets/RINORI%20STUDIO%20logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Sacramento&family=Shrikhand&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="polaroid left hidden" data-polaroid="0"><span class="tape"></span><img alt=""></div>
+        <div class="polaroid right hidden" data-polaroid="1"><span class="tape"></span><img alt=""></div>
+        <span class="flower hide-sm" style="left:20%;top:78%"></span>
+        <span class="flower" style="right:18%;top:12%;width:44px;height:44px"></span>
+        <span class="sparkle" style="left:24%;top:16%">✦</span>
+        <span class="sparkle" style="right:26%;top:60%;animation-delay:1s">✦</span>
+        <span class="sparkle p" style="left:10%;top:40%;animation-delay:2s">✦</span>
+        <div class="container">
+          <div class="seal"><img src="/assets/RINORI%20STUDIO%20logo.png" alt="Rinori Studio"></div>
+          <span class="script">shop the</span>
+          <h1 class="display">Handmade Collection</h1>
+          <p>Soft, dreamy pieces sewn by hand in small batches. 手作り, made with heart.</p>
+          <a class="btn ghost" href="#shop">Let's shop ✿</a>
+        </div>
+        <div class="wave-bottom"></div>
+      </div>
+    </section>
+
+    <section class="badges-band">
+      <div class="container">
+        <div class="cat-badges" data-badges></div>
+      </div>
+    </section>
+
+    <section class="shop-band" id="shop">
+      <div class="wave-top"></div>
+      <div class="shop-band-inner">
+        <span class="flower" style="right:5%;top:10px"></span>
+        <span class="sparkle" style="left:6%;top:40px">✦</span>
+        <div class="container">
+          <div class="title-combo">
+            <span class="script">shop our</span>
+            <h2 class="display">Favorites</h2>
+          </div>
+          <div class="products" data-products>
+            <p class="empty">Loading the goodies…</p>
+          </div>
+        </div>
+      </div>
+      <div class="wave-bottom" style="margin-bottom:-1px"></div>
+    </section>
+
+    <section class="story">
+      <div class="container story-grid">
+        <div class="arch">
+          <span class="flower"></span>
+          <div class="arch-frame"><img data-story-img src="/assets/products/product%201.1.jpg" alt="Handmade organza scrunchies on an open book"></div>
+        </div>
+        <div>
+          <span class="story-label">✿ Our Story ✿</span>
+          <h2>Made slowly, made with love</h2>
+          <p>Rinori Studio is a tiny handmade studio. Every piece is cut, gathered and stitched by hand, one at a time, inspired by soft Japanese colours: sakura pinks, evening blues and quiet paper whites.</p>
+          <p>Because each one is made by hand, no two are exactly alike. That little difference is what makes it yours.</p>
+          <span class="jp">一つ一つ、心をこめて</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="promise-band">
+      <div class="wave-top"></div>
+      <div class="promise-inner">
+        <span class="sparkle" style="left:12%;top:20px">✦</span>
+        <span class="sparkle" style="right:12%;bottom:30px;animation-delay:1.5s">✦</span>
+        <div class="container">
+          <div class="title-combo">
+            <span class="script">our little</span>
+            <h2 class="display">Promises</h2>
+          </div>
+          <div class="promises">
+            <div class="promise"><div class="ico">🧵</div><b>Handmade, always</b><span class="muted small">Sewn by hand in small batches, never mass-produced.</span></div>
+            <div class="promise"><div class="ico">🎀</div><b>Packed with care</b><span class="muted small">Every order is wrapped like a little gift.</span></div>
+            <div class="promise"><div class="ico">📮</div><b>Speed Post delivery</b><span class="muted small">Sent by India Post Speed Post, with a tracking number in your account.</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="follow">
+      <span class="flower" style="left:8%;top:30px"></span>
+      <span class="flower" style="right:9%;bottom:40px;width:44px;height:44px"></span>
+      <span class="sparkle p" style="left:22%;bottom:30px">✦</span>
+      <span class="sparkle p" style="right:24%;top:40px;animation-delay:1s">✦</span>
+      <div class="container" style="text-align:center">
+        <span class="script">follow us</span>
+        <h2 class="display">on Instagram</h2>
+        <p class="muted">New drops, behind-the-scenes and little studio moments. Questions? DM or email us anytime.</p>
+        <div class="footer-links" data-contact></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/common.js"></script>
+  <script>
+    (async () => {
+      const me = await requireUser();
+      renderHeader(me, 'home');
+      renderFooter();
+      petals();
+      document.querySelector('[data-contact]').innerHTML = `
+        <a href="${CONTACT.instagramUrl}" target="_blank" rel="noopener">${ICONS.insta} @${CONTACT.instagram}</a>
+        <a href="mailto:${CONTACT.email}">${ICONS.mail} ${CONTACT.email}</a>`;
+
+      const grid = document.querySelector('[data-products]');
+      const badgesEl = document.querySelector('[data-badges]');
+      let products = [];
+      let filter = 'All';
+
+      function card(p) {
+        const out = p.stock === 0;
+        const alt = p.images[1] ? `<img class="alt" src="${esc(p.images[1])}" alt="" loading="lazy">` : '';
+        return `
+          <article class="product-card">
+            <span class="tape"></span>
+            <a class="product-img" href="/product?id=${p.id}">
+              ${out ? '<span class="tag out">Sold out</span>' : p.stock <= 5 ? `<span class="tag">Only ${p.stock} left</span>` : '<span class="tag">Handmade</span>'}
+              <img src="${esc(p.images[0])}" alt="${esc(p.name)}" loading="lazy">${alt}
+            </a>
+            <div class="product-body">
+              <h3><a href="/product?id=${p.id}">${esc(p.name)}</a></h3>
+              <div class="price">${inr(p.price)}${p.mrp && p.mrp > p.price ? `<s>${inr(p.mrp)}</s>` : ''}</div>
+              <div class="small muted">${p.shipping ? `+ ${inr(p.shipping)} shipping` : '✿ Free shipping'}</div>
+              <button class="btn small" data-add="${p.id}" ${out ? 'disabled' : ''}>${out ? 'Sold out' : 'Add to cart'}</button>
+            </div>
+          </article>`;
+      }
+
+      function renderGrid() {
+        const list = filter === 'All' ? products : products.filter(p => p.category === filter);
+        grid.innerHTML = list.length
+          ? list.map(card).join('')
+          : '<div class="empty" style="grid-column:1/-1"><div class="ico">🌸</div>New handmade pieces are on their way. Check back soon!</div>';
+      }
+
+      function renderBadges() {
+        const cats = ['All', ...new Set(products.map(p => p.category))];
+        badgesEl.innerHTML = cats.map((c, i) => `
+          <button class="cat-badge ${c === filter ? 'active' : ''}" data-cat="${esc(c)}" type="button">
+            ${i % 2 === 0 ? '<span class="mini"></span>' : ''}<span>${esc(c === 'All' ? 'Shop All' : c)}</span>
+          </button>`).join('');
+      }
+
+      badgesEl.addEventListener('click', e => {
+        const b = e.target.closest('[data-cat]');
+        if (!b) return;
+        filter = b.dataset.cat;
+        renderBadges();
+        renderGrid();
+        document.getElementById('shop').scrollIntoView({ behavior: 'smooth' });
+      });
+
+      grid.addEventListener('click', e => {
+        const b = e.target.closest('[data-add]');
+        if (!b) return;
+        Cart.add(b.dataset.add);
+        toast('Added to your cart');
+      });
+
+      try {
+        ({ products } = await api('/api/products'));
+        renderBadges();
+        renderGrid();
+        // Use real product photos in the hero polaroids.
+        const photos = products.flatMap(p => p.images).slice(0, 2);
+        photos.forEach((src, i) => {
+          const el = document.querySelector(`[data-polaroid="${i}"]`);
+          el.querySelector('img').src = src;
+          el.classList.remove('hidden');
+        });
+      } catch (err) {
+        grid.innerHTML = `<p class="empty">${esc(err.message)}</p>`;
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rinori Studio · Welcome</title>
+  <meta name="description" content="Rinori Studio: handmade scrunchies and accessories, made with love.">
+  <link rel="icon" href="/assets/RINORI%20STUDIO%20logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Sacramento&family=Shrikhand&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="auth-page">
+  <main class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-art grid-paper">
+        <span class="flower" style="top:18px;left:18px"></span>
+        <span class="flower" style="bottom:24px;right:20px;width:44px;height:44px"></span>
+        <span class="sparkle p" style="top:30%;right:16%">✦</span>
+        <span class="sparkle p" style="bottom:28%;left:12%">✦</span>
+        <div class="seal"><img src="/assets/RINORI%20STUDIO%20logo.png" alt="Rinori Studio logo"></div>
+        <span class="script">welcome to</span>
+        <h1 class="display">Rinori Studio</h1>
+        <span class="jp">ようこそ · 手作りの店</span>
+        <p class="muted small">Little handmade treasures, sewn one at a time.</p>
+        <p class="small" style="margin:0;position:relative">
+          <a href="https://www.instagram.com/rinori.studio/" target="_blank" rel="noopener">📷 @rinori.studio</a> ·
+          <a href="mailto:rinoristudio@gmail.com">✉️ rinoristudio@gmail.com</a>
+        </p>
+      </div>
+
+      <div class="auth-form">
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" data-tab="login" class="active">Log in</button>
+          <button type="button" role="tab" data-tab="signup">Sign up</button>
+        </div>
+
+        <form id="login-form" novalidate>
+          <h2>Hello again!</h2>
+          <p class="muted">Log in to continue shopping.</p>
+          <div class="error-box hidden" data-error></div>
+          <div class="field">
+            <label for="login-email">Email</label>
+            <input id="login-email" name="email" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="login-password">Password</label>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          </div>
+          <button class="btn block" type="submit">Log in</button>
+          <p class="muted small" style="text-align:center;margin-top:16px">New here? <a href="#" data-switch="signup">Create an account</a></p>
+        </form>
+
+        <form id="signup-form" class="hidden" novalidate>
+          <h2>Join the studio</h2>
+          <p class="muted">Create your account. It only takes a minute.</p>
+          <div class="error-box hidden" data-error></div>
+          <div class="field">
+            <label for="su-name">Full name</label>
+            <input id="su-name" name="name" autocomplete="name" required>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="su-email">Email</label>
+              <input id="su-email" name="email" type="email" autocomplete="email" required>
+            </div>
+            <div class="field">
+              <label for="su-phone">Mobile number</label>
+              <input id="su-phone" name="phone" type="tel" inputmode="numeric" maxlength="13" placeholder="10-digit number" autocomplete="tel" required>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="su-password">Password</label>
+              <input id="su-password" name="password" type="password" minlength="6" autocomplete="new-password" placeholder="At least 6 characters" required>
+            </div>
+            <div class="field">
+              <label for="su-confirm">Confirm password</label>
+              <input id="su-confirm" name="confirm" type="password" autocomplete="new-password" required>
+            </div>
+          </div>
+          <button class="btn block" type="submit">Create account</button>
+          <p class="muted small" style="text-align:center;margin-top:16px">Already have an account? <a href="#" data-switch="login">Log in</a></p>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/common.js"></script>
+  <script>
+    const forms = { login: document.getElementById('login-form'), signup: document.getElementById('signup-form') };
+    const next = qs('next');
+
+    function show(tab) {
+      document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      forms.login.classList.toggle('hidden', tab !== 'login');
+      forms.signup.classList.toggle('hidden', tab !== 'signup');
+    }
+    document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
+    document.querySelectorAll('[data-switch]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); show(a.dataset.switch); }));
+    if (location.hash === '#signup') show('signup');
+
+    function goAfterLogin(user) {
+      if (user.role === 'admin') location.href = next || '/admin';
+      else location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/home';
+    }
+
+    // Already logged in? Skip this page.
+    api('/api/me').then(me => goAfterLogin(me.user)).catch(() => {});
+
+    function fail(form, msg) {
+      const box = form.querySelector('[data-error]');
+      box.textContent = msg;
+      box.classList.remove('hidden');
+    }
+
+    forms.login.addEventListener('submit', async e => {
+      e.preventDefault();
+      const f = e.target, btn = f.querySelector('button[type=submit]');
+      f.querySelector('[data-error]').classList.add('hidden');
+      setBusy(btn, true, 'Logging in…');
+      try {
+        const { user } = await api('/api/auth/login', { method: 'POST', body: { email: f.email.value, password: f.password.value } });
+        goAfterLogin(user);
+      } catch (err) {
+        fail(f, err.message);
+        setBusy(btn, false);
+      }
+    });
+
+    forms.signup.addEventListener('submit', async e => {
+      e.preventDefault();
+      const f = e.target, btn = f.querySelector('button[type=submit]');
+      f.querySelector('[data-error]').classList.add('hidden');
+      if (f.password.value !== f.confirm.value) return fail(f, 'Passwords do not match');
+      setBusy(btn, true, 'Creating account…');
+      try {
+        await api('/api/auth/signup', {
+          method: 'POST',
+          body: { name: f.name.value, email: f.email.value, phone: f.phone.value, password: f.password.value },
+        });
+        location.href = '/address?welcome=1';
+      } catch (err) {
+        fail(f, err.message);
+        setBusy(btn, false);
+      }
+    });
+  </script>
+</body>
+</html>

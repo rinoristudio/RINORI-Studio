@@ -1,0 +1,18 @@
+{
+  "name": "rinori-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rinori Studio - handmade products shop",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "multer": "^2.5.0",
+    "pg": "^8.23.1"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}

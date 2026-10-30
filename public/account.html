@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Account · Rinori Studio</title>
+  <link rel="icon" href="/assets/RINORI%20STUDIO%20logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Sacramento&family=Shrikhand&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="container">
+    <div class="page-title">
+      <span class="script" style="font-size:2.6rem" data-hello>hello</span>
+      <h1 class="display">My Account</h1>
+    </div>
+    <div class="account-layout">
+      <nav class="card plain side-tabs" aria-label="Account sections">
+        <button data-tab="orders">📦 My orders</button>
+        <button data-tab="notifications">🔔 Updates <span class="badge hidden" style="position:static" data-unread></span></button>
+        <button data-tab="addresses">🏡 Addresses</button>
+        <button data-tab="profile">🌸 Profile</button>
+      </nav>
+      <section class="card" data-panel><p class="empty">Loading…</p></section>
+    </div>
+  </main>
+
+  <script src="/js/common.js"></script>
+  <script>
+    (async () => {
+      let me = await requireUser();
+      renderHeader(me, 'account');
+      renderFooter();
+      petals(6);
+
+      const panel = document.querySelector('[data-panel]');
+      document.querySelector('[data-hello]').textContent = `hi ${me.user.name.split(' ')[0]}`;
+      const unreadEl = document.querySelector('[data-unread]');
+      unreadEl.textContent = me.unread;
+      unreadEl.classList.toggle('hidden', !me.unread);
+
+      const tabs = {
+        async orders() {
+          const { orders } = await api('/api/orders');
+          if (!orders.length) {
+            return `<h2 class="section-title">My orders</h2><div class="empty"><div class="ico">📦</div><p>No orders yet.</p><a class="btn" href="/home#shop">Shop now</a></div>`;
+          }
+          return `<h2 class="section-title">My orders</h2>` + orders.map(o => `
+            <div class="order">
+              <div class="order-head">
+                <div><b>${esc(o.number)}</b><div class="small muted">${fmtDate(o.createdAt)}</div></div>
+                <span class="status ${esc(o.status)}">${esc(o.status)}</span>
+              </div>
+              <div class="order-items">
+                ${o.items.map(i => `<div class="it"><img src="${esc(i.image)}" alt=""><div>${esc(i.name)} <span class="muted">× ${i.qty}</span></div><b style="margin-left:auto">${inr(i.price * i.qty)}</b></div>`).join('')}
+              </div>
+              <div class="small">Total <b>${inr(o.total)}</b>${o.shipping ? ` (incl. ${inr(o.shipping)} Speed Post)` : ''} · Paid by ${esc(o.paymentMethod)}${o.paymentRef ? ` · UTR ${esc(o.paymentRef)}` : ''}</div>
+              ${o.trackingNumber ? `<div class="notice small" style="margin:10px 0 0">📮 Speed Post tracking no: <b>${esc(o.trackingNumber)}</b> · <a href="https://www.indiapost.gov.in/" target="_blank" rel="noopener">Track on India Post</a></div>` : ''}
+              <div class="small muted">Deliver to ${esc(o.address.fullName)}, ${formatAddress(o.address)}</div>
+              <ul class="timeline">
+                ${o.history.slice().reverse().map(h => `
+                  <li><b>${esc(h.status)}</b> <span class="muted small">· ${fmtDate(h.at)}</span>
+                  ${h.message && !h.message.startsWith('Order placed') ? `<div class="msg">💌 ${esc(h.message)}</div>` : ''}</li>`).join('')}
+              </ul>
+              ${o.status === 'Placed' ? `<button class="btn small danger" data-cancel="${o.id}" style="margin-top:8px">Cancel order</button>` : ''}
+            </div>`).join('');
+        },
+
+        async notifications() {
+          const { notifications } = await api('/api/notifications');
+          if (me.unread) {
+            api('/api/notifications/read', { method: 'POST' }).catch(() => {});
+            me.unread = 0;
+            unreadEl.classList.add('hidden');
+            document.querySelector('.site-header .badge')?.classList.add('hidden');
+          }
+          if (!notifications.length) return `<h2 class="section-title">Updates</h2><div class="empty"><div class="ico">🔔</div>No updates yet.</div>`;
+          return `<h2 class="section-title">Updates from Rinori Studio</h2>` + notifications.map(n => `
+            <div class="notif ${n.read ? '' : 'unread'}">
+              <div class="ico">${n.orderId ? '📦' : n.productId ? '✨' : '💌'}</div>
+              <div>
+                <b>${esc(n.title)}</b>
+                <div>${esc(n.message)}</div>
+                <div class="small muted">${fmtDate(n.createdAt)}
+                  ${n.productId ? ` · <a href="/product?id=${esc(n.productId)}">View product</a>` : ''}
+                  ${n.orderId ? ` · <a href="#orders">View order</a>` : ''}</div>
+              </div>
+            </div>`).join('');
+        },
+
+        async addresses() {
+          const list = me.user.addresses;
+          return `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+              <h2 class="section-title" style="margin:0">Saved addresses</h2>
+              <a class="btn small" href="/address?next=account">+ Add address</a>
+            </div>
+            ${list.length ? list.map(a => `
+              <div class="addr-card">
+                <b>${esc(a.fullName)}</b> <span class="pill">${esc(a.type)}</span>${a.isDefault ? '<span class="pill blue">Default</span>' : ''}
+                <div>${formatAddress(a)}</div>
+                <div class="small muted">📞 ${esc(a.phone)}${a.altPhone ? ' · ' + esc(a.altPhone) : ''}</div>
+                <div class="actions">
+                  <a class="btn small soft" href="/address?id=${a.id}&next=account">Edit</a>
+                  ${a.isDefault ? '' : `<button class="btn small soft" data-default="${a.id}">Make default</button>`}
+                  <button class="btn small danger" data-del="${a.id}">Delete</button>
+                </div>
+              </div>`).join('') : `<div class="notice">You haven't added an address yet. You'll need one to place an order.</div>`}`;
+        },
+
+        async profile() {
+          return `
+            <h2 class="section-title">Profile</h2>
+            <form data-profile style="max-width:440px">
+              <div class="field"><label for="pf-name">Full name</label><input id="pf-name" name="name" value="${esc(me.user.name)}" required></div>
+              <div class="field"><label for="pf-email">Email</label><input id="pf-email" value="${esc(me.user.email)}" disabled></div>
+              <div class="field"><label for="pf-phone">Mobile number</label><input id="pf-phone" name="phone" value="${esc(me.user.phone)}" inputmode="numeric" maxlength="13"></div>
+              <button class="btn" type="submit">Save changes</button>
+            </form>`;
+        },
+      };
+
+      async function show() {
+        const name = tabs[location.hash.slice(1)] ? location.hash.slice(1) : 'orders';
+        document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+        panel.innerHTML = '<p class="empty">Loading…</p>';
+        try {
+          panel.innerHTML = await tabs[name]();
+        } catch (err) {
+          panel.innerHTML = `<p class="empty">${esc(err.message)}</p>`;
+        }
+      }
+
+      document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+        if (location.hash === '#' + b.dataset.tab) show();
+        else location.hash = b.dataset.tab;
+      }));
+      window.addEventListener('hashchange', show);
+
+      async function refreshMe() { me = await api('/api/me'); }
+
+      panel.addEventListener('click', async e => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        try {
+          if (b.dataset.cancel) {
+            if (!confirm('Cancel this order?')) return;
+            await api(`/api/orders/${b.dataset.cancel}/cancel`, { method: 'POST' });
+            toast('Order cancelled');
+            show();
+          } else if (b.dataset.default) {
+            await api(`/api/me/addresses/${b.dataset.default}/default`, { method: 'POST' });
+            await refreshMe();
+            show();
+          } else if (b.dataset.del) {
+            if (!confirm('Delete this address?')) return;
+            await api(`/api/me/addresses/${b.dataset.del}`, { method: 'DELETE' });
+            await refreshMe();
+            toast('Address deleted');
+            show();
+          }
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+
+      panel.addEventListener('submit', async e => {
+        if (!e.target.matches('[data-profile]')) return;
+        e.preventDefault();
+        try {
+          const { user } = await api('/api/me', { method: 'PUT', body: { name: e.target.name.value, phone: e.target.phone.value } });
+          me.user = { ...me.user, ...user };
+          toast('Profile saved');
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+
+      show();
+    })();
+  </script>
+</body>
+</html>

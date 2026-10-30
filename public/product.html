@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Product · Rinori Studio</title>
+  <link rel="icon" href="/assets/RINORI%20STUDIO%20logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Sacramento&family=Shrikhand&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="container">
+    <p style="margin:24px 0 0"><a href="/home#shop">← Back to shop</a></p>
+    <div data-root><p class="empty">Loading…</p></div>
+  </main>
+
+  <script src="/js/common.js"></script>
+  <script>
+    (async () => {
+      const me = await requireUser();
+      renderHeader(me);
+      renderFooter();
+      petals(8);
+
+      const root = document.querySelector('[data-root]');
+      let p;
+      try {
+        ({ product: p } = await api('/api/products/' + encodeURIComponent(qs('id') || '')));
+      } catch (err) {
+        root.innerHTML = `<div class="empty"><div class="ico">🌸</div>${esc(err.message)}<br><br><a class="btn" href="/home">Back to shop</a></div>`;
+        return;
+      }
+      document.title = `${p.name} · Rinori Studio`;
+      const out = p.stock === 0;
+      let qty = 1;
+
+      root.innerHTML = `
+        <div class="product-page">
+          <div class="gallery">
+            <span class="tape"></span>
+            <span class="flower"></span>
+            <div class="gallery-main"><img data-main src="${esc(p.images[0])}" alt="${esc(p.name)}"></div>
+            ${p.images.length > 1 ? `<div class="thumbs">${p.images.map((src, i) =>
+              `<button type="button" class="${i === 0 ? 'active' : ''}" data-src="${esc(src)}" aria-label="Photo ${i + 1}"><img src="${esc(src)}" alt=""></button>`).join('')}</div>` : ''}
+          </div>
+          <div class="product-info">
+            <span class="pill">${esc(p.category)}</span>
+            <h1 style="margin-top:10px">${esc(p.name)}</h1>
+            <div class="price">${inr(p.price)}${p.mrp && p.mrp > p.price ? `<s>${inr(p.mrp)}</s>` : ''}</div>
+            <p class="small muted" style="margin:2px 0 0">Inclusive of all taxes · ${out ? '<b style="color:var(--danger)">Sold out</b>' : p.stock <= 5 ? `<b>Only ${p.stock} left!</b>` : 'In stock'}</p>
+            <p style="white-space:pre-line;margin-top:18px">${esc(p.description)}</p>
+            <div class="buy-row">
+              <div class="qty" ${out ? 'hidden' : ''}>
+                <button type="button" data-q="-1" aria-label="Less">−</button><span data-qty>1</span><button type="button" data-q="1" aria-label="More">+</button>
+              </div>
+              <button class="btn ghost" data-add ${out ? 'disabled' : ''}>Add to cart</button>
+              <button class="btn" data-buy ${out ? 'disabled' : ''}>Buy now</button>
+            </div>
+            <ul class="perks">
+              <li>🧵 Handmade, so each piece is one of a kind</li>
+              <li>🎀 Gift-ready packaging</li>
+              <li>📮 ${p.shipping ? `Speed Post shipping ${inr(p.shipping)}` : 'Free Speed Post shipping'}</li>
+              <li>📱 Pay easily with UPI (GPay, PhonePe, Paytm…)</li>
+              <li>💌 Questions? DM <a href="${CONTACT.instagramUrl}" target="_blank" rel="noopener">@${CONTACT.instagram}</a></li>
+            </ul>
+          </div>
+        </div>`;
+
+      root.querySelectorAll('[data-src]').forEach(b => b.addEventListener('click', () => {
+        root.querySelector('[data-main]').src = b.dataset.src;
+        root.querySelectorAll('[data-src]').forEach(x => x.classList.toggle('active', x === b));
+      }));
+      root.querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', () => {
+        qty = Math.max(1, Math.min(Math.min(20, p.stock), qty + Number(b.dataset.q)));
+        root.querySelector('[data-qty]').textContent = qty;
+      }));
+      root.querySelector('[data-add]').addEventListener('click', () => { Cart.add(p.id, qty); toast('Added to your cart'); });
+      root.querySelector('[data-buy]').addEventListener('click', () => { Cart.add(p.id, qty); location.href = '/cart'; });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Rinori Studio</title>
+  <link rel="icon" href="/assets/RINORI%20STUDIO%20logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Sacramento&family=Shrikhand&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="container">
+    <div class="page-title">
+      <span class="script" style="font-size:2.6rem">studio</span>
+      <h1 class="display">Admin Desk</h1>
+    </div>
+    <div class="account-layout">
+      <nav class="card plain side-tabs" aria-label="Admin sections">
+        <button data-tab="dashboard">📊 Dashboard</button>
+        <button data-tab="orders">📦 Orders</button>
+        <button data-tab="products">🎀 Products</button>
+        <button data-tab="customers">👥 Customers</button>
+        <button data-tab="message">💌 Send update</button>
+        <button data-tab="settings">⚙️ Settings</button>
+      </nav>
+      <section class="card" data-panel><p class="empty">Loading…</p></section>
+    </div>
+  </main>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>
