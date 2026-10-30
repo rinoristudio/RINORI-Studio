@@ -72,7 +72,7 @@ The admin email and password are **not stored in the code or in any file**. Crea
 npm run set-admin -- rinoristudio@gmail.com
 ```
 
-It prints a new random password once. Running it again gives a new password and logs that account out everywhere. Then log in at `/admin`.
+It prints a new random password once. To pick your own (at least 8 characters), add it at the end: `npm run set-admin -- rinoristudio@gmail.com yourpassword`. Each run replaces the old password and logs that account out everywhere. Then log in at `/admin`.
 
 ## Notes
 

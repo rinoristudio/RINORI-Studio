@@ -1,6 +1,6 @@
 // Creates the admin login, or gives an existing one a fresh password.
-// Usage: npm run set-admin -- you@example.com
-// The new password is printed once. It is never stored in code or files.
+// Usage: npm run set-admin -- you@example.com [password]
+// Without a password, a random one is made. It is printed once and never stored in code or files.
 try { process.loadEnvFile(); } catch { /* use real environment variables */ }
 
 const crypto = require('crypto');
@@ -15,8 +15,15 @@ async function main() {
     return;
   }
 
+  const chosen = process.argv[3];
+  if (chosen !== undefined && chosen.length < 8) {
+    console.error('Password must be at least 8 characters');
+    process.exitCode = 1;
+    return;
+  }
+
   await query(SCHEMA);
-  const password = 'Rs-' + crypto.randomBytes(12).toString('base64url');
+  const password = chosen ?? 'Rs-' + crypto.randomBytes(12).toString('base64url');
   const { rows } = await query('SELECT id FROM users WHERE email = $1', [email]);
 
   if (rows[0]) {
