@@ -5,7 +5,8 @@
   "description": "Rinori Studio - handmade products shop",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "set-admin": "node scripts/set-admin.js"
   },
   "dependencies": {
     "express": "^4.22.3",

@@ -27,6 +27,7 @@ Product photos are stored in the database. Render's disk is wiped on every deplo
 
 ```
 server.js        API + page serving
+scripts/         set-admin.js: create the admin or reset its password
 db.js            Postgres connection and table setup (tables are created automatically)
 config.js        admin login defaults, shipping charges
 public/          pages (index = login/sign-up, home, product, cart, address, account, admin)
@@ -39,13 +40,14 @@ render.yaml      Render blueprint
 1. Create a project at https://neon.tech.
 2. Open **Connect** and copy the connection string. It looks like `postgresql://...neon.tech/neondb?sslmode=require`.
 
-On first start the app creates the tables, the admin account and the first product (Starry Mist Organza Scrunchie, ₹80).
+On first start the app creates the tables and the first product (Starry Mist Organza Scrunchie, ₹80). Create the admin login with `npm run set-admin` (see below).
 
 ## 2. Run on your computer
 
 ```bash
 npm install
-cp .env.example .env      # then paste your Neon DATABASE_URL and set ADMIN_PASSWORD
+cp .env.example .env      # then paste your Neon DATABASE_URL
+npm run set-admin -- you@example.com
 npm start
 ```
 
@@ -55,20 +57,22 @@ Open http://localhost:3000.
 
 1. Push this folder to a GitHub repo (`.env` is git-ignored, so your secrets stay local).
 2. On Render, go to **New → Blueprint** and pick the repo. Render reads `render.yaml`.
-3. When asked, fill in `DATABASE_URL` (Neon string), `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
+3. When asked, fill in `DATABASE_URL` (your Neon connection string).
 4. Deploy. Your site will be at `https://rinori-studio.onrender.com` (or similar).
 
-Without the blueprint, choose **New → Web Service**, set build command `npm ci`, start command `npm start`, and add the same three environment variables.
+Without the blueprint, choose **New → Web Service**, set build command `npm ci`, start command `npm start`, and add the `DATABASE_URL` environment variable.
 
 > Render's free plan sleeps after about 15 minutes idle, so the first visit afterwards takes 30 to 60 seconds. Use a paid instance for a live shop.
 
 ## Admin login
 
-The admin account is created **once**, on the first start, from `ADMIN_EMAIL` / `ADMIN_PASSWORD` (defaults are in `config.js`). Changing those variables later doesn't change an existing admin. To reset it, delete the admin row in Neon's SQL editor and restart:
+The admin email and password are **not stored in the code or in any file**. Create the admin, or reset a forgotten password, from this folder with your Neon `DATABASE_URL` in `.env`:
 
-```sql
-DELETE FROM users WHERE role = 'admin';
+```bash
+npm run set-admin -- rinoristudio@gmail.com
 ```
+
+It prints a new random password once. Running it again gives a new password and logs that account out everywhere. Then log in at `/admin`.
 
 ## Notes
 

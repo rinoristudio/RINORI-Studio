@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 const { query, transaction, SCHEMA } = require('./db');
+const { hashPassword, checkPassword } = require('./passwords');
 
 const SESSION_DAYS = 30;
 
@@ -28,19 +29,6 @@ const str = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : 
 const isEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 const isPhone = p => /^[6-9]\d{9}$/.test(p);
 const cleanPhone = p => str(p, 20).replace(/[\s-]/g, '').replace(/^(\+91|0)/, '');
-
-function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
-  return `scrypt:${salt}:${hash}`;
-}
-
-function checkPassword(password, stored) {
-  const [, salt, hash] = String(stored).split(':');
-  if (!salt || !hash) return false;
-  const test = crypto.scryptSync(password, salt, 64);
-  return crypto.timingSafeEqual(test, Buffer.from(hash, 'hex'));
-}
 
 // Wraps async route handlers so thrown errors reach the error middleware.
 const h = fn => (req, res, next) => fn(req, res, next).catch(next);
@@ -137,15 +125,7 @@ async function init() {
 
   const admin = await query("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1");
   if (!admin.rowCount) {
-    // The default password lives in the repo, so never use it on the live site.
-    if (process.env.RENDER && !process.env.ADMIN_PASSWORD) {
-      throw new Error('Set ADMIN_PASSWORD in the Render dashboard (Environment) before the first deploy.');
-    }
-    await query(
-      "INSERT INTO users (id, role, name, email, password_hash) VALUES ($1,'admin','Rinori Admin',$2,$3)",
-      [newId(), config.adminEmail, hashPassword(config.adminPassword)],
-    );
-    console.log(`Created admin account ${config.adminEmail}`);
+    console.warn('No admin account yet. Create one with: npm run set-admin -- you@example.com');
   }
 
   const seeded = await query("SELECT 1 FROM settings WHERE key = 'seeded'");

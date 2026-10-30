@@ -12,7 +12,3 @@ services:
         value: "22"
       - key: DATABASE_URL
         sync: false   # paste your Neon connection string when Render asks
-      - key: ADMIN_EMAIL
-        sync: false
-      - key: ADMIN_PASSWORD
-        sync: false
