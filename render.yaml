@@ -12,3 +12,9 @@ services:
         value: "22"
       - key: DATABASE_URL
         sync: false   # paste your Neon connection string when Render asks
+      - key: RAZORPAY_KEY_ID
+        sync: false   # Razorpay Dashboard -> Account & Settings -> API Keys
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false   # the secret you choose when adding the webhook

@@ -16,7 +16,6 @@
         <h2 class="section-title">Today at the studio</h2>
         <div class="stats">
           <div class="stat"><div class="muted small">Total orders</div><div class="n">${s.orders}</div></div>
-          <div class="stat"><div class="muted small">Payments to verify</div><div class="n">${s.to_verify}</div></div>
           <div class="stat"><div class="muted small">Ready to post</div><div class="n">${s.to_ship}</div></div>
           <div class="stat"><div class="muted small">Revenue</div><div class="n">${inr(s.revenue)}</div></div>
           <div class="stat"><div class="muted small">Customers</div><div class="n">${s.customers}</div></div>
@@ -30,7 +29,7 @@
           <a class="btn" href="#orders">View orders</a>
           <a class="btn ghost" href="#products" data-new-product>+ Add product</a>
         </div>
-        ${me.payment.upiId ? '' : '<div class="notice" style="margin-top:20px">⚠️ Customers cannot pay yet. Add your UPI ID in <a href="#settings">Settings</a>.</div>'}`;
+        ${me.payment.ready ? '' : '<div class="notice" style="margin-top:20px">⚠️ Customers cannot pay yet. Connect Razorpay: see <a href="#settings">Payments</a>.</div>'}`;
     },
 
     async orders() {
@@ -64,22 +63,17 @@
     },
 
     async settings() {
-      const { settings } = await api('/api/admin/settings');
+      const p = await api('/api/admin/payments');
+      const row = (ok, label, detail) => `<div class="notice" style="background:${ok ? '#e3f3e7' : 'var(--pink-50)'};border-color:${ok ? 'var(--ok)' : 'var(--pink-400)'}">${ok ? '✅' : '⚠️'} <b>${label}</b><div class="small">${detail}</div></div>`;
       return `
-        <h2 class="section-title">Payment settings</h2>
-        <p class="muted">Customers pay to this UPI ID at checkout and type in their transaction ID (UTR). Check it in your bank or UPI app, then set the order to <b>Payment verified</b>.</p>
-        <form data-settings-form style="max-width:520px">
-          <div class="error-box hidden" data-error></div>
-          <div class="field"><label for="s-upi">UPI ID</label><input id="s-upi" name="upiId" maxlength="80" placeholder="e.g. rinoristudio@okaxis" value="${esc(settings.upiId)}"></div>
-          <div class="field"><label for="s-name">Name shown to customers</label><input id="s-name" name="upiName" maxlength="80" value="${esc(settings.upiName)}"></div>
-          <div class="field">
-            <label>UPI QR code <span class="opt">(optional, a screenshot of your QR from GPay / PhonePe / Paytm)</span></label>
-            ${settings.upiQr ? `<div class="img-edit"><div class="im"><img src="${esc(settings.upiQr)}" alt="Current QR"><button type="button" data-remove-qr aria-label="Remove QR">×</button></div></div>` : ''}
-            <input type="file" name="upiQr" accept="image/jpeg,image/png,image/webp">
-          </div>
-          <input type="hidden" name="removeQr" value="false">
-          <button class="btn" type="submit">Save settings</button>
-        </form>`;
+        <h2 class="section-title">Payments (Razorpay)</h2>
+        <p class="muted">Customers pay in the Razorpay window at checkout. An order only appears here after Razorpay confirms the payment. Your keys are kept in Render's Environment settings, never in the code.</p>
+        ${row(p.ready, p.ready ? `Razorpay connected (${p.mode === 'live' ? 'LIVE: real payments' : 'TEST mode: no real money'})` : 'Razorpay not connected',
+          p.ready ? 'Customers can pay and place orders.' : 'Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in Render → Environment. Until then nobody can place an order.')}
+        ${row(p.webhook, p.webhook ? 'Webhook connected' : 'Webhook not set (recommended)',
+          p.webhook ? 'Payments are confirmed even if a customer closes the page right after paying.'
+            : `In Razorpay → Webhooks add <b>${esc(p.webhookUrl)}</b> with events <b>payment.captured</b> and <b>order.paid</b>, choose a secret, and save the same secret in Render as RAZORPAY_WEBHOOK_SECRET.`)}
+        <p class="small muted">Refunds: open the payment in your Razorpay dashboard and click Refund, then set the order here to Cancelled (stock is returned automatically).</p>`;
     },
 
     async message() {
@@ -146,8 +140,8 @@
             <h4>Customer</h4>
             <b>${esc(o.customer.name)}</b><br>✉️ ${esc(o.customer.email)}<br>📞 ${esc(o.customer.phone)}
             <h4 style="margin-top:12px">Payment</h4>
-            ${esc(o.paymentMethod)} · <b>${inr(o.total)}</b>${o.paymentRef ? `<br>UTR: <b>${esc(o.paymentRef)}</b>` : ''}
-            ${o.status === 'Placed' ? '<br><span class="small" style="color:var(--danger)">Check this payment in your UPI app, then set to "Payment verified"</span>' : ''}
+            ${esc(o.paymentMethod)} · <b>${inr(o.total)}</b>${o.paymentRef ? `<br>Payment ref: <b>${esc(o.paymentRef)}</b>` : ''}
+            ${o.status === 'Paid' ? '<br><span class="small" style="color:var(--ok)">✅ Paid via Razorpay · ready to pack</span>' : ''}
             ${o.trackingNumber ? `<h4 style="margin-top:12px">Speed Post</h4><b>${esc(o.trackingNumber)}</b>` : ''}
           </div>
           <div class="box">
@@ -302,9 +296,6 @@
       } else if (t.dataset.removeNew !== undefined) {
         state.newFiles.splice(Number(t.dataset.removeNew), 1);
         renderPreviews();
-      } else if (t.hasAttribute('data-remove-qr')) {
-        t.closest('.img-edit').remove();
-        panel.querySelector('[name=removeQr]').value = 'true';
       } else if (t.dataset.messageUser) {
         state.messageTo = t.dataset.messageUser;
         go('message');
@@ -373,12 +364,6 @@
         toast(id ? 'Product saved' : 'Product added');
         state.editing = null;
         state.newFiles = [];
-        show();
-        return;
-      } else if (f.matches('[data-settings-form]')) {
-        const { settings } = await api('/api/admin/settings', { method: 'PUT', body: new FormData(f) });
-        me.payment = settings;
-        toast('Settings saved');
         show();
         return;
       } else if (f.matches('[data-message-form]')) {

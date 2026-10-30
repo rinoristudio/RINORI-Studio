@@ -8,16 +8,16 @@ Online shop for Rinori Studio's handmade products. It's a Node.js (Express) app 
 - Sign up / log in (sign-up asks for name, email, mobile and password)
 - After sign-up they're asked for a delivery address: name, mobile, alternate mobile, house/flat, street/area, landmark, pincode, city, district, state, and address type. They can skip this and add it later, but **an order can't be placed without an address**
 - Home page: logo hero, category badges, products with prices
-- Product page, cart and checkout with **UPI payment**: the customer pays to your UPI ID or QR code and enters the transaction ID (UTR)
+- Product page, cart and checkout with **Razorpay** (UPI, cards, netbanking, wallets). **An order is created only after Razorpay confirms the payment**. The server checks Razorpay's signature, so nobody can place an order without paying
 - **Shipping is set on each product** (₹ amount, or 0 for free) and is charged once per product in the order. Delivery is by India Post Speed Post
 - My Account: order timeline, Speed Post tracking number, updates from the studio, saved addresses, profile
 - Contact: Instagram [@rinori.studio](https://www.instagram.com/rinori.studio/) and rinoristudio@gmail.com (edit `CONTACT` in `public/js/common.js`)
 
 **Admin** (`/admin`)
 - Dashboard: orders, revenue, customers, low-stock alerts
-- Orders: full customer and address details plus the customer's UPI transaction ID. Move the order along: Placed (payment to check) → Payment verified → Packed → Shipped (add the Speed Post tracking number) → Delivered, or Cancelled. Each change notifies the customer
+- Orders: only paid orders appear, with full customer and address details and the Razorpay payment ID. Move the order along: Paid → Packed → Shipped (add the Speed Post tracking number) → Delivered, or Cancelled (stock is returned; refund from the Razorpay dashboard). Each change notifies the customer
 - Products: add, edit, hide or delete, upload up to 10 photos, set price, MRP, Speed Post shipping charge (0 = free) and stock, and optionally notify every customer ("New in the studio", "Back in stock")
-- Settings: your UPI ID, the name shown to customers, and an optional QR code image. **Customers can't place orders until a UPI ID is saved here**
+- Payments: shows whether Razorpay is connected (test or live) and whether the webhook is set up
 - Customers: list with contact details and addresses
 - Send update: message all customers or one customer, optionally linked to a product
 
@@ -64,6 +64,18 @@ Without the blueprint, choose **New → Web Service**, set build command `npm ci
 
 > Render's free plan sleeps after about 15 minutes idle, so the first visit afterwards takes 30 to 60 seconds. Use a paid instance for a live shop.
 
+## 4. Connect Razorpay
+
+1. In the Razorpay Dashboard, go to **Account & Settings → API Keys** and generate a key. Start with **Test mode** keys (`rzp_test_…`) to try it without real money.
+2. In Render → your service → **Environment**, add `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`. Render redeploys by itself.
+3. **Webhook (recommended):** in Razorpay → **Webhooks → Add New Webhook**:
+   - URL: `https://YOUR-SITE.onrender.com/api/razorpay/webhook`
+   - Secret: make up a long random text
+   - Events: `payment.captured` and `order.paid`
+
+   Then add the same secret in Render as `RAZORPAY_WEBHOOK_SECRET`. This confirms orders even if a customer closes the page right after paying.
+4. Admin → **Payments** shows whether everything is connected. When test orders work, switch to **Live mode** keys (`rzp_live_…`). Razorpay must have activated your account first.
+
 ## Admin login
 
 The admin email and password are **not stored in the code or in any file**. Create the admin, or reset a forgotten password, from this folder with your Neon `DATABASE_URL` in `.env`:
@@ -76,5 +88,5 @@ It prints a new random password once. To pick your own (at least 8 characters), 
 
 ## Notes
 
-- Payments are checked by hand: open your UPI or bank app, find the UTR the customer entered, then mark the order "Payment verified". A gateway such as Razorpay can be added later for automatic checks.
+- Unpaid checkouts (customer opened Razorpay but didn't pay) are never shown and are deleted after 2 days.
 - The cart is saved in the customer's browser. Orders, addresses and everything else are saved in Neon.

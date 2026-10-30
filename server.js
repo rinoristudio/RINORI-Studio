@@ -8,11 +8,12 @@ const path = require('path');
 const config = require('./config');
 const { query, transaction, SCHEMA } = require('./db');
 const { hashPassword, checkPassword } = require('./passwords');
+const razorpay = require('./razorpay');
 
 const SESSION_DAYS = 30;
 
-// "Placed" means the customer says they paid; the admin checks the UPI payment and moves it on.
-const ORDER_STATUSES = ['Placed', 'Payment verified', 'Packed', 'Shipped', 'Delivered', 'Cancelled'];
+// Orders become "Paid" only after Razorpay confirms the payment.
+const ORDER_STATUSES = ['Paid', 'Packed', 'Shipped', 'Delivered', 'Cancelled'];
 const INDIAN_STATES = [
   'Andaman and Nicobar Islands', 'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chandigarh',
   'Chhattisgarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi', 'Goa', 'Gujarat', 'Haryana',
@@ -108,14 +109,8 @@ async function saveImage(db, buffer, mime) {
   return '/images/' + id;
 }
 
-async function getSettings() {
-  const { rows } = await query("SELECT key, value FROM settings WHERE key IN ('upiId','upiName','upiQr')");
-  const s = Object.fromEntries(rows.map(r => [r.key, r.value]));
-  return { upiId: s.upiId || '', upiName: s.upiName || 'Rinori Studio', upiQr: s.upiQr || '' };
-}
-
-async function putSetting(db, key, value) {
-  await db.query('INSERT INTO settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value = $2', [key, value]);
+function paymentStatus() {
+  return { ready: razorpay.isConfigured(), mode: razorpay.mode(), webhook: razorpay.webhookConfigured() };
 }
 
 // ---------- startup: schema + seed ----------
@@ -214,7 +209,7 @@ const upload = multer({
 
 const app = express();
 app.set('trust proxy', 1); // Render terminates HTTPS in front of the app
-app.use(express.json({ limit: '100kb' }));
+app.use((req, res, next) => (req.path === '/api/razorpay/webhook' ? next() : express.json({ limit: '100kb' })(req, res, next)));
 
 app.get('/healthz', (req, res) => res.send('ok'));
 
@@ -275,7 +270,7 @@ app.get('/api/me', auth, h(async (req, res) => {
     user: { ...req.user, addresses: await getAddresses(req.user.id) },
     unread: rows[0].n,
     states: INDIAN_STATES,
-    payment: await getSettings(),
+    payment: paymentStatus(),
   });
 }));
 
@@ -359,67 +354,148 @@ app.get('/api/products/:id', auth, h(async (req, res) => {
 }));
 
 // Orders
+// Flow: /api/checkout creates an unpaid order + a Razorpay order. The customer pays in
+// Razorpay Checkout, then /api/checkout/verify (or the webhook) checks Razorpay's signature
+// and only then marks the order Paid. Unpaid orders are never shown to anyone.
 class UserError extends Error {}
+const UNPAID = 'Awaiting payment';
 
-app.post('/api/orders', auth, h(async (req, res) => {
-  const payment = await getSettings();
-  if (!payment.upiId) return res.status(400).json({ error: 'Online payment is not set up yet. Please message us on Instagram.' });
-  const paymentRef = str(req.body.paymentRef, 40).replace(/\s/g, '');
-  if (!/^[A-Za-z0-9]{6,40}$/.test(paymentRef)) {
-    return res.status(400).json({ error: 'Please enter the UPI transaction ID (UTR) from your payment app' });
-  }
+app.post('/api/checkout', auth, h(async (req, res) => {
+  if (!razorpay.isConfigured()) return res.status(503).json({ error: 'Online payment is not set up yet. Please message us on Instagram.' });
 
   const addrRows = await query('SELECT * FROM addresses WHERE id = $1 AND user_id = $2', [req.body.addressId, req.user.id]);
   if (!addrRows.rowCount) return res.status(400).json({ error: 'Please add a delivery address before placing your order' });
-  const address = toAddress(addrRows.rows[0]);
+  const { id: _id, isDefault, ...addressSnapshot } = toAddress(addrRows.rows[0]);
 
   const lines = Array.isArray(req.body.items) ? req.body.items.slice(0, 50) : [];
   if (!lines.length) return res.status(400).json({ error: 'Your cart is empty' });
 
+  const items = [];
   try {
-    const order = await transaction(async db => {
-      const items = [];
-      for (const line of lines) {
-        const qty = Number(line.qty);
-        if (!Number.isInteger(qty) || qty < 1 || qty > 20) throw new UserError('Invalid quantity');
-        const { rows } = await db.query('SELECT * FROM products WHERE id = $1 AND active FOR UPDATE', [String(line.productId)]);
-        const product = rows[0];
-        if (!product) throw new UserError('A product in your cart is no longer available');
-        if (product.stock < qty) throw new UserError(`Only ${product.stock} left of "${product.name}"`);
-        await db.query('UPDATE products SET stock = stock - $2 WHERE id = $1', [product.id, qty]);
-        items.push({ productId: product.id, name: product.name, price: product.price, shipping: product.shipping, qty, image: product.images[0] || '' });
-      }
-
-      const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
-      // Each product carries its own Speed Post charge, counted once per product (0 = free).
-      const shipping = items.reduce((s, i) => s + i.shipping, 0);
-      const { id: _id, isDefault, ...addressSnapshot } = address;
-      const history = [{ status: 'Placed', message: 'Order placed · payment being verified', at: new Date().toISOString() }];
-
-      const { rows } = await db.query(
-        `INSERT INTO orders (id, number, user_id, customer, address, items, subtotal, shipping, total, payment_method, payment_ref, note, status, history)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Placed',$13) RETURNING *`,
-        [
-          newId(), orderNumber(), req.user.id,
-          JSON.stringify({ name: req.user.name, email: req.user.email, phone: req.user.phone }),
-          JSON.stringify(addressSnapshot), JSON.stringify(items),
-          subtotal, shipping, subtotal + shipping, 'UPI', paymentRef, str(req.body.note, 500), JSON.stringify(history),
-        ],
-      );
-      const order = toOrder(rows[0]);
-      await notify(db, req.user.id, `Order ${order.number} placed 🎀`,
-        `We received your order of ₹${order.total}. We'll check your UPI payment and update you soon.`, { orderId: order.id });
-      return order;
-    });
-    res.json({ order });
+    for (const line of lines) {
+      const qty = Number(line.qty);
+      if (!Number.isInteger(qty) || qty < 1 || qty > 20) throw new UserError('Invalid quantity');
+      const { rows } = await query('SELECT * FROM products WHERE id = $1 AND active', [String(line.productId)]);
+      const product = rows[0];
+      if (!product) throw new UserError('A product in your cart is no longer available');
+      if (product.stock < qty) throw new UserError(`Only ${product.stock} left of "${product.name}"`);
+      items.push({ productId: product.id, name: product.name, price: product.price, shipping: product.shipping, qty, image: product.images[0] || '' });
+    }
   } catch (err) {
     if (err instanceof UserError) return res.status(400).json({ error: err.message });
     throw err;
   }
+
+  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+  // Each product carries its own Speed Post charge, counted once per product (0 = free).
+  const shipping = items.reduce((s, i) => s + i.shipping, 0);
+  const total = subtotal + shipping;
+  const number = orderNumber();
+
+  let rzpOrder;
+  try {
+    rzpOrder = await razorpay.createOrder(total, number, { customer: req.user.email });
+  } catch (err) {
+    console.error('Razorpay order failed:', err.message);
+    return res.status(502).json({ error: 'Could not start the payment. Please try again in a moment.' });
+  }
+
+  // Clear out checkouts that were never paid.
+  await query(`DELETE FROM orders WHERE status = $1 AND created_at < now() - interval '2 days'`, [UNPAID]);
+  const { rows } = await query(
+    `INSERT INTO orders (id, number, user_id, customer, address, items, subtotal, shipping, total, payment_method, note, status, history, razorpay_order_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'Razorpay',$10,$11,'[]',$12) RETURNING id`,
+    [
+      newId(), number, req.user.id,
+      JSON.stringify({ name: req.user.name, email: req.user.email, phone: req.user.phone }),
+      JSON.stringify(addressSnapshot), JSON.stringify(items),
+      subtotal, shipping, total, str(req.body.note, 500), UNPAID, rzpOrder.id,
+    ],
+  );
+
+  res.json({
+    orderId: rows[0].id,
+    razorpay: {
+      key: razorpay.keyId(),
+      order_id: rzpOrder.id,
+      amount: rzpOrder.amount,
+      currency: 'INR',
+      name: 'Rinori Studio',
+      description: `Order ${number}`,
+      prefill: { name: req.user.name, email: req.user.email, contact: req.user.phone },
+    },
+  });
+}));
+
+// Marks an unpaid order as Paid exactly once, takes the stock and tells the customer.
+async function markPaid(razorpayOrderId, paymentId) {
+  return transaction(async db => {
+    const { rows } = await db.query('SELECT * FROM orders WHERE razorpay_order_id = $1 FOR UPDATE', [razorpayOrderId]);
+    if (!rows[0]) return null;
+    const order = toOrder(rows[0]);
+    if (order.status !== UNPAID) return order; // already handled (verify + webhook both arrive)
+
+    let short = false;
+    for (const item of order.items) {
+      const r = await db.query('UPDATE products SET stock = stock - $2 WHERE id = $1 AND stock >= $2', [item.productId, item.qty]);
+      if (!r.rowCount) short = true;
+    }
+    const message = short
+      ? 'Payment received · some items sold out meanwhile, we will contact you'
+      : 'Payment received · order placed';
+    const entry = { status: 'Paid', message, at: new Date().toISOString() };
+    const updated = await db.query(
+      `UPDATE orders SET status = 'Paid', payment_ref = $2, created_at = now(), history = history || $3::jsonb WHERE id = $1 RETURNING *`,
+      [order.id, paymentId, JSON.stringify([entry])],
+    );
+    const paid = toOrder(updated.rows[0]);
+    if (paid.userId) {
+      await notify(db, paid.userId, `Order ${paid.number} placed 🎀`,
+        `Payment of ₹${paid.total} received. Thank you! We'll pack your order with love and share the Speed Post tracking number.`, { orderId: paid.id });
+    }
+    return paid;
+  });
+}
+
+// Makes sure the money is actually captured (accounts without auto-capture leave it "authorized").
+async function ensureCaptured(paymentId, amountPaise) {
+  try {
+    const payment = await razorpay.fetchPayment(paymentId);
+    if (payment.status === 'authorized') await razorpay.capturePayment(paymentId, amountPaise);
+  } catch (err) {
+    console.error('Razorpay capture check failed:', err.message);
+  }
+}
+
+app.post('/api/checkout/verify', auth, h(async (req, res) => {
+  const orderId = str(req.body.razorpay_order_id, 80);
+  const paymentId = str(req.body.razorpay_payment_id, 80);
+  const signature = str(req.body.razorpay_signature, 200);
+  if (!razorpay.verifyPaymentSignature(orderId, paymentId, signature)) {
+    return res.status(400).json({ error: 'We could not confirm this payment. If money was deducted, please contact us with your payment ID.' });
+  }
+  const own = await query('SELECT total FROM orders WHERE razorpay_order_id = $1 AND user_id = $2', [orderId, req.user.id]);
+  if (!own.rowCount) return res.status(404).json({ error: 'Order not found' });
+
+  await ensureCaptured(paymentId, own.rows[0].total * 100);
+  const order = await markPaid(orderId, paymentId);
+  res.json({ order });
+}));
+
+// Razorpay webhook (Dashboard > Webhooks, events: payment.captured, order.paid).
+// Catches payments where the customer closed the page before we heard back.
+app.post('/api/razorpay/webhook', express.raw({ type: 'application/json', limit: '1mb' }), h(async (req, res) => {
+  if (!razorpay.verifyWebhookSignature(req.body, req.get('X-Razorpay-Signature'))) return res.status(400).send('bad signature');
+  const event = JSON.parse(req.body.toString('utf8'));
+  const payment = event.payload?.payment?.entity;
+  if (['payment.captured', 'order.paid'].includes(event.event) && payment?.order_id) {
+    await markPaid(payment.order_id, payment.id);
+  }
+  res.send('ok');
 }));
 
 app.get('/api/orders', auth, h(async (req, res) => {
-  const { rows } = await query('SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC', [req.user.id]);
+  const { rows } = await query('SELECT * FROM orders WHERE user_id = $1 AND status <> $2 ORDER BY created_at DESC', [req.user.id, UNPAID]);
   res.json({ orders: rows.map(toOrder) });
 }));
 
@@ -438,17 +514,6 @@ async function setOrderStatus(db, order, status, message) {
   return toOrder(rows[0]);
 }
 
-app.post('/api/orders/:id/cancel', auth, h(async (req, res) => {
-  const result = await transaction(async db => {
-    const { rows } = await db.query('SELECT * FROM orders WHERE id = $1 AND user_id = $2 FOR UPDATE', [req.params.id, req.user.id]);
-    if (!rows[0]) return { code: 404, error: 'Order not found' };
-    if (rows[0].status !== 'Placed') return { code: 400, error: 'This order can no longer be cancelled. Please contact us.' };
-    return { order: await setOrderStatus(db, toOrder(rows[0]), 'Cancelled', 'Cancelled by customer') };
-  });
-  if (result.error) return res.status(result.code).json({ error: result.error });
-  res.json(result);
-}));
-
 // Notifications
 app.get('/api/notifications', auth, h(async (req, res) => {
   const { rows } = await query('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100', [req.user.id]);
@@ -465,10 +530,9 @@ app.post('/api/notifications/read', auth, h(async (req, res) => {
 app.get('/api/admin/stats', adminOnly, h(async (req, res) => {
   const { rows: [s] } = await query(`
     SELECT
-      (SELECT count(*)::int FROM orders) AS orders,
-      (SELECT count(*)::int FROM orders WHERE status = 'Placed') AS to_verify,
-      (SELECT count(*)::int FROM orders WHERE status IN ('Payment verified','Packed')) AS to_ship,
-      (SELECT coalesce(sum(total),0)::int FROM orders WHERE status <> 'Cancelled') AS revenue,
+      (SELECT count(*)::int FROM orders WHERE status <> 'Awaiting payment') AS orders,
+      (SELECT count(*)::int FROM orders WHERE status IN ('Paid','Packed')) AS to_ship,
+      (SELECT coalesce(sum(total),0)::int FROM orders WHERE status NOT IN ('Cancelled','Awaiting payment')) AS revenue,
       (SELECT count(*)::int FROM users WHERE role = 'customer') AS customers,
       (SELECT count(*)::int FROM products) AS products`);
   const low = await query('SELECT id, name, stock FROM products WHERE stock <= 5 ORDER BY stock');
@@ -476,7 +540,7 @@ app.get('/api/admin/stats', adminOnly, h(async (req, res) => {
 }));
 
 app.get('/api/admin/orders', adminOnly, h(async (req, res) => {
-  const { rows } = await query('SELECT * FROM orders ORDER BY created_at DESC');
+  const { rows } = await query("SELECT * FROM orders WHERE status <> 'Awaiting payment' ORDER BY created_at DESC");
   res.json({ orders: rows.map(toOrder), statuses: ORDER_STATUSES });
 }));
 
@@ -487,7 +551,7 @@ app.put('/api/admin/orders/:id', adminOnly, h(async (req, res) => {
   if (!ORDER_STATUSES.includes(status)) return res.status(400).json({ error: 'Unknown status' });
 
   const result = await transaction(async db => {
-    const { rows } = await db.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [req.params.id]);
+    const { rows } = await db.query("SELECT * FROM orders WHERE id = $1 AND status <> 'Awaiting payment' FOR UPDATE", [req.params.id]);
     if (!rows[0]) return { code: 404, error: 'Order not found' };
     const current = toOrder(rows[0]);
     const trackingChanged = tracking !== current.trackingNumber;
@@ -612,28 +676,15 @@ app.delete('/api/admin/products/:id', adminOnly, h(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.get('/api/admin/settings', adminOnly, h(async (req, res) => {
-  res.json({ settings: await getSettings() });
-}));
-
-app.put('/api/admin/settings', adminOnly, upload.single('upiQr'), h(async (req, res) => {
-  const upiId = str(req.body.upiId, 80);
-  const upiName = str(req.body.upiName, 80) || 'Rinori Studio';
-  if (upiId && !/^[\w.-]{2,}@[a-zA-Z][\w.]{1,}$/.test(upiId)) return res.status(400).json({ error: 'That does not look like a UPI ID (example: rinoristudio@okaxis)' });
-  await transaction(async db => {
-    await putSetting(db, 'upiId', upiId);
-    await putSetting(db, 'upiName', upiName);
-    if (req.file) await putSetting(db, 'upiQr', await saveImage(db, req.file.buffer, req.file.mimetype));
-    else if (req.body.removeQr === 'true') await putSetting(db, 'upiQr', '');
-  });
-  res.json({ settings: await getSettings() });
-}));
+app.get('/api/admin/payments', adminOnly, (req, res) => {
+  res.json({ ...paymentStatus(), webhookUrl: `${req.protocol}://${req.get('host')}/api/razorpay/webhook` });
+});
 
 app.get('/api/admin/users', adminOnly, h(async (req, res) => {
   const { rows } = await query(`
     SELECT u.*,
-      (SELECT count(*)::int FROM orders o WHERE o.user_id = u.id) AS order_count,
-      (SELECT coalesce(sum(total),0)::int FROM orders o WHERE o.user_id = u.id AND o.status <> 'Cancelled') AS total_spent
+      (SELECT count(*)::int FROM orders o WHERE o.user_id = u.id AND o.status <> 'Awaiting payment') AS order_count,
+      (SELECT coalesce(sum(total),0)::int FROM orders o WHERE o.user_id = u.id AND o.status NOT IN ('Cancelled','Awaiting payment')) AS total_spent
     FROM users u WHERE role = 'customer' ORDER BY created_at DESC`);
   const addresses = await query(
     "SELECT a.* FROM addresses a JOIN users u ON u.id = a.user_id WHERE u.role = 'customer' ORDER BY a.is_default DESC, a.created_at",

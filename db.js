@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS settings (
 ALTER TABLE products ADD COLUMN IF NOT EXISTS shipping INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_ref TEXT NOT NULL DEFAULT '';
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number TEXT NOT NULL DEFAULT '';
+
+-- v3: Razorpay Checkout
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_order_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS orders_razorpay_idx ON orders(razorpay_order_id);
 `;
 
 module.exports = { pool, query, transaction, SCHEMA };

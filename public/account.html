@@ -56,7 +56,7 @@
               <div class="order-items">
                 ${o.items.map(i => `<div class="it"><img src="${esc(i.image)}" alt=""><div>${esc(i.name)} <span class="muted">× ${i.qty}</span></div><b style="margin-left:auto">${inr(i.price * i.qty)}</b></div>`).join('')}
               </div>
-              <div class="small">Total <b>${inr(o.total)}</b>${o.shipping ? ` (incl. ${inr(o.shipping)} Speed Post)` : ''} · Paid by ${esc(o.paymentMethod)}${o.paymentRef ? ` · UTR ${esc(o.paymentRef)}` : ''}</div>
+              <div class="small">Total <b>${inr(o.total)}</b>${o.shipping ? ` (incl. ${inr(o.shipping)} Speed Post)` : ''} · Paid by ${esc(o.paymentMethod)}${o.paymentRef ? ` · Ref ${esc(o.paymentRef)}` : ''}</div>
               ${o.trackingNumber ? `<div class="notice small" style="margin:10px 0 0">📮 Speed Post tracking no: <b>${esc(o.trackingNumber)}</b> · <a href="https://www.indiapost.gov.in/" target="_blank" rel="noopener">Track on India Post</a></div>` : ''}
               <div class="small muted">Deliver to ${esc(o.address.fullName)}, ${formatAddress(o.address)}</div>
               <ul class="timeline">
@@ -64,7 +64,7 @@
                   <li><b>${esc(h.status)}</b> <span class="muted small">· ${fmtDate(h.at)}</span>
                   ${h.message && !h.message.startsWith('Order placed') ? `<div class="msg">💌 ${esc(h.message)}</div>` : ''}</li>`).join('')}
               </ul>
-              ${o.status === 'Placed' ? `<button class="btn small danger" data-cancel="${o.id}" style="margin-top:8px">Cancel order</button>` : ''}
+              ${['Paid', 'Packed'].includes(o.status) ? `<p class="small muted" style="margin:8px 0 0">Need to cancel? DM us on Instagram <a href="${CONTACT.instagramUrl}" target="_blank" rel="noopener">@${CONTACT.instagram}</a> before it ships.</p>` : ''}
             </div>`).join('');
         },
 
@@ -145,12 +145,7 @@
         const b = e.target.closest('button');
         if (!b) return;
         try {
-          if (b.dataset.cancel) {
-            if (!confirm('Cancel this order?')) return;
-            await api(`/api/orders/${b.dataset.cancel}/cancel`, { method: 'POST' });
-            toast('Order cancelled');
-            show();
-          } else if (b.dataset.default) {
+          if (b.dataset.default) {
             await api(`/api/me/addresses/${b.dataset.default}/default`, { method: 'POST' });
             await refreshMe();
             show();

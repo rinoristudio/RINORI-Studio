@@ -148,7 +148,7 @@ function announceBar() {
     '✿ Handmade with love',
     '✿ 手作り',
     `✿ Follow us @${CONTACT.instagram}`,
-    '✿ Pay easily with UPI',
+    '✿ Secure payments by Razorpay',
   ];
   const run = msgs.map(m => `<span>${esc(m)}</span>`).join('');
   bar.innerHTML = `<div class="track">${run.repeat(4)}</div>`;

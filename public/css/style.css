@@ -467,3 +467,4 @@ th { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: 
 .follow .display { font-size: clamp(2.2rem, 5vw, 3.4rem); margin: -8px 0 10px; }
 .follow .footer-links a { background: var(--pink-500); color: #fff; }
 .follow .footer-links a:hover { color: #fff; }
+.status.Paid { background: #e3f3e7; color: var(--ok); }
