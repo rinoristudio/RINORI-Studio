@@ -101,9 +101,17 @@
     document.querySelectorAll('[data-switch]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); show(a.dataset.switch); }));
     if (location.hash === '#signup') show('signup');
 
+    // Only follow ?next= to a page on this site (blocks //evil.com, /\evil.com, https://evil.com).
+    function safeNext() {
+      if (!next || !next.startsWith('/')) return null;
+      try {
+        const url = new URL(next, location.origin);
+        return url.origin === location.origin ? url.pathname + url.search + url.hash : null;
+      } catch { return null; }
+    }
+
     function goAfterLogin(user) {
-      if (user.role === 'admin') location.href = next || '/admin';
-      else location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/home';
+      location.href = safeNext() || (user.role === 'admin' ? '/admin' : '/home');
     }
 
     // Already logged in? Skip this page.

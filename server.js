@@ -211,7 +211,13 @@ const app = express();
 app.set('trust proxy', 1); // Render terminates HTTPS in front of the app
 app.use((req, res, next) => (req.path === '/api/razorpay/webhook' ? next() : express.json({ limit: '100kb' })(req, res, next)));
 
-app.get('/healthz', (req, res) => res.send('ok'));
+// The loading page (a separate always-on static site) polls this while the service wakes up.
+// CORS is open here only: it reveals nothing but "ok".
+app.get('/healthz', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cache-Control', 'no-store');
+  res.send('ok');
+});
 
 app.get('/images/:id', h(async (req, res) => {
   const { rows } = await query('SELECT mime, data FROM images WHERE id = $1', [req.params.id]);
@@ -245,13 +251,47 @@ app.post('/api/auth/signup', h(async (req, res) => {
   res.json({ user: toUser(rows[0]) });
 }));
 
+// Failed-login limiter (in memory: fine for a single Render instance).
+// Counts failures per IP and per email so neither can be used to guess passwords.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_PER_IP = 20;
+const LOGIN_MAX_PER_EMAIL = 8;
+const loginFailures = new Map(); // key -> { count, resetAt }
+
+function failureCount(key) {
+  const f = loginFailures.get(key);
+  if (!f) return 0;
+  if (f.resetAt <= Date.now()) { loginFailures.delete(key); return 0; }
+  return f.count;
+}
+
+function recordFailure(key) {
+  const now = Date.now();
+  const f = loginFailures.get(key);
+  if (!f || f.resetAt <= now) loginFailures.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+  else f.count++;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, f] of loginFailures) if (f.resetAt <= now) loginFailures.delete(key);
+}, LOGIN_WINDOW_MS).unref();
+
 app.post('/api/auth/login', h(async (req, res) => {
   const email = str(req.body.email, 120).toLowerCase();
   const password = typeof req.body.password === 'string' ? req.body.password : '';
+  const ipKey = 'ip:' + req.ip;
+  const emailKey = 'email:' + email;
+  if (failureCount(ipKey) >= LOGIN_MAX_PER_IP || failureCount(emailKey) >= LOGIN_MAX_PER_EMAIL) {
+    return res.status(429).json({ error: 'Too many failed attempts. Please wait 15 minutes and try again.' });
+  }
   const { rows } = await query('SELECT * FROM users WHERE email = $1', [email]);
   if (!rows[0] || !checkPassword(password, rows[0].password_hash)) {
+    recordFailure(ipKey);
+    recordFailure(emailKey);
     return res.status(401).json({ error: 'Email or password is incorrect' });
   }
+  loginFailures.delete(emailKey);
   await startSession(req, res, rows[0].id);
   res.json({ user: toUser(rows[0]) });
 }));
@@ -458,12 +498,16 @@ async function markPaid(razorpayOrderId, paymentId) {
 }
 
 // Makes sure the money is actually captured (accounts without auto-capture leave it "authorized").
-async function ensureCaptured(paymentId, amountPaise) {
+// Returns true only when Razorpay says this payment, for this order, is captured.
+async function ensureCaptured(razorpayOrderId, paymentId, amountPaise) {
   try {
-    const payment = await razorpay.fetchPayment(paymentId);
-    if (payment.status === 'authorized') await razorpay.capturePayment(paymentId, amountPaise);
+    let payment = await razorpay.fetchPayment(paymentId);
+    if (payment.order_id !== razorpayOrderId) return false;
+    if (payment.status === 'authorized') payment = await razorpay.capturePayment(paymentId, amountPaise);
+    return payment.status === 'captured';
   } catch (err) {
     console.error('Razorpay capture check failed:', err.message);
+    return false;
   }
 }
 
@@ -477,7 +521,11 @@ app.post('/api/checkout/verify', auth, h(async (req, res) => {
   const own = await query('SELECT total FROM orders WHERE razorpay_order_id = $1 AND user_id = $2', [orderId, req.user.id]);
   if (!own.rowCount) return res.status(404).json({ error: 'Order not found' });
 
-  await ensureCaptured(paymentId, own.rows[0].total * 100);
+  if (!(await ensureCaptured(orderId, paymentId, own.rows[0].total * 100))) {
+    // Not captured yet (or Razorpay could not be reached). The webhook marks it Paid once
+    // the money is captured, so don't fail: the customer must not be tempted to pay twice.
+    return res.json({ pending: true, paymentId });
+  }
   const order = await markPaid(orderId, paymentId);
   res.json({ order });
 }));
@@ -499,11 +547,21 @@ app.get('/api/orders', auth, h(async (req, res) => {
   res.json({ orders: rows.map(toOrder) });
 }));
 
-// Changes an order's status inside a transaction, returning stock when it gets cancelled.
+// Changes an order's status inside a transaction, returning stock when it gets cancelled
+// and taking it back again if a cancelled order is reopened.
 async function setOrderStatus(db, order, status, message) {
   if (status === 'Cancelled' && order.status !== 'Cancelled') {
     for (const item of order.items) {
       await db.query('UPDATE products SET stock = stock + $2 WHERE id = $1', [item.productId, item.qty]);
+    }
+  } else if (order.status === 'Cancelled' && status !== 'Cancelled') {
+    for (const item of order.items) {
+      const r = await db.query('UPDATE products SET stock = stock - $2 WHERE id = $1 AND stock >= $2', [item.productId, item.qty]);
+      // A deleted product has no stock to take; a product that sold out meanwhile blocks the reopen.
+      if (!r.rowCount) {
+        const exists = await db.query('SELECT stock FROM products WHERE id = $1', [item.productId]);
+        if (exists.rowCount) throw new UserError(`Not enough stock of "${item.name}" to reopen this order (${exists.rows[0].stock} left)`);
+      }
     }
   }
   const entry = { status, message, at: new Date().toISOString() };
@@ -552,6 +610,7 @@ app.put('/api/admin/orders/:id', adminOnly, h(async (req, res) => {
 
   const result = await transaction(async db => {
     const { rows } = await db.query("SELECT * FROM orders WHERE id = $1 AND status <> 'Awaiting payment' FOR UPDATE", [req.params.id]);
+    // (UserError from setOrderStatus rolls this back and is turned into a 400 below.)
     if (!rows[0]) return { code: 404, error: 'Order not found' };
     const current = toOrder(rows[0]);
     const trackingChanged = tracking !== current.trackingNumber;
@@ -563,6 +622,9 @@ app.put('/api/admin/orders/:id', adminOnly, h(async (req, res) => {
       await notify(db, order.userId, `Order ${order.number}: ${status}`, note || `Your order is now "${status}".`, { orderId: order.id });
     }
     return { order };
+  }).catch(err => {
+    if (err instanceof UserError) return { code: 400, error: err.message };
+    throw err;
   });
   if (result.error) return res.status(result.code).json({ error: result.error });
   res.json(result);

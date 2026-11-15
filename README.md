@@ -62,7 +62,25 @@ Open http://localhost:3000.
 
 Without the blueprint, choose **New → Web Service**, set build command `npm ci`, start command `npm start`, and add the `DATABASE_URL` environment variable.
 
-> Render's free plan sleeps after about 15 minutes idle, so the first visit afterwards takes 30 to 60 seconds. Use a paid instance for a live shop.
+> Render's free plan sleeps after about 15 minutes idle, so the first visit afterwards takes 30 to 60 seconds. Use a paid instance for a live shop, or keep it awake as below.
+
+### Rinori loading page (instead of Render's "waking up" screen)
+
+`loader/` is a tiny always-on static site (`rinori-studio-shop` in `render.yaml`). It shows a pink Rinori loading screen, wakes the shop in the background by checking `/healthz` every 2 seconds, then sends the visitor in, keeping the page they asked for (e.g. `/product?id=…`).
+
+- With the Blueprint, Render creates it on the next sync. Otherwise: **New → Static Site**, same repo, build command `echo ok`, publish directory `loader`, and add a rewrite rule `/*` → `/index.html`.
+- If the shop isn't at `https://rinori-studio.onrender.com`, change `APP_URL` at the top of `loader/index.html`.
+- **Share the loading page's address** (Instagram bio, custom domain), not the shop's. Visitors who open the shop's own address while it's asleep still see Render's page.
+
+### Keep the free plan awake
+
+Render shows its own "waking up" page while a sleeping service starts, and the app can't change that page. To avoid it, have a free uptime monitor visit the site every 10 minutes so it never sleeps:
+
+1. Sign up at https://uptimerobot.com (free) and choose **New monitor**.
+2. Type **HTTP(s)**, URL `https://YOUR-SITE.onrender.com/healthz`, interval **5 or 10 minutes**.
+3. Save. It also emails you if the shop goes down.
+
+The free plan gives 750 hours a month per Render account, enough for this one service to run all month. If you run other free services on the same account, they share those hours.
 
 ## 4. Connect Razorpay
 
