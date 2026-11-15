@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rinori Studio · Opening the studio</title>
+  <link rel="icon" href="/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Sacramento&family=Shrikhand&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+  <script>
+    // The shop itself (the Render web service). Change this if your service has a different address.
+    const APP_URL = 'https://rinori-studio.onrender.com';
+  </script>
+  <style>
+    :root {
+      --pink-50: #fff6f9; --pink-100: #ffe6ee; --pink-200: #ffd0de; --pink-300: #ffb3c8;
+      --pink-400: #ff94b2; --pink-500: #f2709a; --pink-700: #d24f7d; --berry: #6e3350; --muted: #a0778a;
+      --font-body: 'Quicksand', 'Zen Maru Gothic', 'Segoe UI', sans-serif;
+      --font-display: 'Shrikhand', Georgia, serif;
+      --font-script: 'Sacramento', cursive;
+      --font-jp: 'Zen Maru Gothic', sans-serif;
+      --scallop: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='black'%3E%3Ccircle cx='50' cy='50' r='42'/%3E%3Ccircle cx='92' cy='50' r='9'/%3E%3Ccircle cx='86.4' cy='71' r='9'/%3E%3Ccircle cx='71' cy='86.4' r='9'/%3E%3Ccircle cx='50' cy='92' r='9'/%3E%3Ccircle cx='29' cy='86.4' r='9'/%3E%3Ccircle cx='13.6' cy='71' r='9'/%3E%3Ccircle cx='8' cy='50' r='9'/%3E%3Ccircle cx='13.6' cy='29' r='9'/%3E%3Ccircle cx='29' cy='13.6' r='9'/%3E%3Ccircle cx='50' cy='8' r='9'/%3E%3Ccircle cx='71' cy='13.6' r='9'/%3E%3Ccircle cx='86.4' cy='29' r='9'/%3E%3C/g%3E%3C/svg%3E");
+      --sakura-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg transform='translate(50 50)'%3E%3Cg id='p'%3E%3Cpath d='M0 -6 C-14 -18 -16 -36 -6 -44 L0 -38 L6 -44 C16 -36 14 -18 0 -6z' fill='%23ff94b2' stroke='%23ffffff' stroke-width='3'/%3E%3C/g%3E%3Cuse href='%23p' transform='rotate(72)'/%3E%3Cuse href='%23p' transform='rotate(144)'/%3E%3Cuse href='%23p' transform='rotate(216)'/%3E%3Cuse href='%23p' transform='rotate(288)'/%3E%3Ccircle r='7' fill='%23ffe6ee'/%3E%3Ccircle r='3' fill='%23d24f7d'/%3E%3C/g%3E%3C/svg%3E");
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; overflow: hidden;
+      font-family: var(--font-body); font-weight: 500; color: var(--berry);
+      background: radial-gradient(ellipse at 50% 35%, var(--pink-50) 0%, var(--pink-100) 55%, var(--pink-200) 100%);
+      display: grid; place-items: center; padding: 16px; text-align: center;
+    }
+    main { position: relative; z-index: 2; max-width: 520px; width: 100%; }
+
+    /* scalloped seal with the logo, gently floating */
+    .seal { width: 190px; aspect-ratio: 1; margin: 0 auto; display: grid; place-items: center; position: relative; animation: float 3.2s ease-in-out infinite; }
+    .seal::before { content: ''; position: absolute; inset: 0; background: #fff; -webkit-mask: var(--scallop) center / contain no-repeat; mask: var(--scallop) center / contain no-repeat; filter: drop-shadow(0 8px 14px rgba(210, 79, 125, .3)); }
+    .seal img { width: 72%; position: relative; }
+    /* dashed "stitches" circling the seal */
+    .stitch { position: absolute; inset: -16px; border-radius: 50%; border: 3px dashed var(--pink-400); animation: spin 9s linear infinite; }
+    .flower { position: absolute; width: 46px; height: 46px; background: var(--sakura-svg) center / contain no-repeat; filter: drop-shadow(0 4px 6px rgba(210, 79, 125, .3)); animation: spin 14s linear infinite; }
+    .flower.a { right: -18px; top: -6px; }
+    .flower.b { left: -14px; bottom: 4px; width: 34px; height: 34px; animation-direction: reverse; }
+
+    .script { font-family: var(--font-script); color: var(--pink-500); font-size: clamp(2.4rem, 9vw, 3.2rem); line-height: 1; display: block; margin-top: 26px; }
+    h1 {
+      font-family: var(--font-display); font-weight: 400; margin: -2px 0 10px; line-height: 1.15;
+      font-size: clamp(2rem, 8vw, 2.9rem); color: #fff;
+      -webkit-text-stroke: 6px var(--pink-500); paint-order: stroke fill; text-shadow: 3px 4px 0 var(--pink-700);
+    }
+    .msg { min-height: 1.6em; margin: 0; font-weight: 600; transition: opacity .35s; }
+    .msg.fade { opacity: 0; }
+
+    /* thread progress: a needle pulling stitches along */
+    .thread { position: relative; height: 22px; width: min(280px, 100%); margin: 22px auto 0; }
+    .thread::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 3px dashed var(--pink-300); }
+    .thread span { position: absolute; top: 50%; left: 0; width: 34%; height: 3px; margin-top: -1.5px; border-radius: 3px; background: var(--pink-500); animation: sew 1.8s ease-in-out infinite; }
+    .jp { font-family: var(--font-jp); color: var(--pink-500); letter-spacing: .25em; font-size: .85rem; font-weight: 700; margin-top: 18px; }
+
+    .slow { margin-top: 18px; font-size: .9rem; color: var(--muted); }
+    .slow a, .btn { color: var(--pink-700); font-weight: 700; text-decoration: none; }
+    .btn { display: inline-block; margin-top: 10px; padding: 10px 22px; border-radius: 999px; background: var(--pink-500); color: #fff; border: 0; font: 700 .9rem var(--font-body); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; box-shadow: 0 6px 16px -8px rgba(210, 79, 125, .6); }
+    .btn:hover { background: var(--pink-700); }
+    .hidden { display: none !important; }
+
+    .sparkle { position: fixed; color: #fff; font-size: 1.4rem; text-shadow: 0 0 8px rgba(255,255,255,.9); animation: twinkle 3s ease-in-out infinite; pointer-events: none; }
+    .petals { position: fixed; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+    .petal { position: absolute; top: -20px; width: 13px; height: 10px; background: linear-gradient(135deg, #fff, var(--pink-300)); border-radius: 12px 1px 12px 1px; opacity: .85; animation: fall linear infinite; }
+
+    @keyframes float { 50% { transform: translateY(-10px) rotate(-2deg); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes twinkle { 50% { opacity: .35; transform: scale(.8); } }
+    @keyframes sew { 0% { left: 0; width: 0; } 50% { left: 0; width: 60%; } 100% { left: 100%; width: 0; } }
+    @keyframes fall { 0% { transform: translate(0, -20px) rotate(0); } 100% { transform: translate(120px, 105vh) rotate(540deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .seal, .stitch, .flower, .sparkle, .thread span { animation: none; }
+      .thread span { width: 60%; }
+      .petals { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <span class="sparkle" style="left:14%;top:18%">✦</span>
+  <span class="sparkle" style="right:16%;top:28%;animation-delay:1s">✦</span>
+  <span class="sparkle" style="left:22%;bottom:16%;animation-delay:2s">✦</span>
+
+  <main role="status" aria-live="polite">
+    <div class="seal">
+      <span class="stitch" aria-hidden="true"></span>
+      <img src="/logo.png" alt="Rinori Studio">
+      <span class="flower a" aria-hidden="true"></span>
+      <span class="flower b" aria-hidden="true"></span>
+    </div>
+    <span class="script">just a moment</span>
+    <h1>Opening the Studio</h1>
+    <p class="msg" data-msg>Unlocking the studio door…</p>
+    <div class="thread" aria-hidden="true"><span></span></div>
+    <div class="jp">手作り · 心をこめて</div>
+
+    <div class="slow hidden" data-slow>
+      This is taking longer than usual.<br>
+      <button class="btn" type="button" data-retry>Try again</button><br>
+      <span style="display:inline-block;margin-top:10px">or message us on Instagram <a href="https://www.instagram.com/rinori.studio/" target="_blank" rel="noopener">@rinori.studio</a></span>
+    </div>
+  </main>
+
+  <script>
+    // While the shop's server wakes up, keep asking its /healthz page if it's ready.
+    // Render's own "waking up" page doesn't send the CORS header the shop does, so the
+    // check only succeeds once the real app answers. Then we send the visitor straight in.
+    const target = APP_URL + (location.pathname === '/index.html' ? '/' : location.pathname) + location.search + location.hash;
+    const msgEl = document.querySelector('[data-msg]');
+    const slowEl = document.querySelector('[data-slow]');
+    const messages = [
+      'Unlocking the studio door…',
+      'Threading the needle…',
+      'Ironing the organza…',
+      'Fluffing the scrunchies…',
+      'Tying the last bow…',
+      'Arranging the shelves…',
+      'Almost there, thank you for waiting ✿',
+    ];
+    let msgIndex = 0;
+    const msgTimer = setInterval(() => {
+      msgIndex = Math.min(msgIndex + 1, messages.length - 1);
+      msgEl.classList.add('fade');
+      setTimeout(() => { msgEl.textContent = messages[msgIndex]; msgEl.classList.remove('fade'); }, 350);
+    }, 4500);
+
+    async function isReady() {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      try {
+        const res = await fetch(APP_URL + '/healthz?t=' + Date.now(), { cache: 'no-store', signal: ctrl.signal });
+        return res.ok && (await res.text()).trim() === 'ok';
+      } catch {
+        return false; // asleep, waking, or a network hiccup: try again
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    let started = 0;
+    async function wait() {
+      started = Date.now();
+      slowEl.classList.add('hidden');
+      while (true) {
+        if (await isReady()) {
+          clearInterval(msgTimer);
+          msgEl.textContent = 'Welcome in! 🌸';
+          location.replace(target);
+          return;
+        }
+        if (Date.now() - started > 120000) { slowEl.classList.remove('hidden'); return; }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+    document.querySelector('[data-retry]').addEventListener('click', wait);
+    wait();
+
+    // Falling sakura petals, like the shop.
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const wrap = document.createElement('div');
+      wrap.className = 'petals';
+      wrap.setAttribute('aria-hidden', 'true');
+      for (let i = 0; i < 14; i++) {
+        const p = document.createElement('span');
+        p.className = 'petal';
+        p.style.left = Math.random() * 100 + 'vw';
+        p.style.animationDuration = 9 + Math.random() * 10 + 's';
+        p.style.animationDelay = -Math.random() * 18 + 's';
+        p.style.transform = `scale(${0.6 + Math.random() * 0.7})`;
+        wrap.appendChild(p);
+      }
+      document.body.appendChild(wrap);
+    }
+  </script>
+</body>
+</html>

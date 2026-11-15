@@ -36,6 +36,8 @@
           <button type="button" role="tab" data-tab="signup">Sign up</button>
         </div>
 
+        <div class="notice small hidden" data-cart-notice>🛍️ Please log in or sign up to add items to your cart and place an order. We'll save the item for you.</div>
+
         <form id="login-form" novalidate>
           <h2>Hello again!</h2>
           <p class="muted">Log in to continue shopping.</p>
@@ -83,6 +85,10 @@
           <button class="btn block" type="submit">Create account</button>
           <p class="muted small" style="text-align:center;margin-top:16px">Already have an account? <a href="#" data-switch="login">Log in</a></p>
         </form>
+
+        <div class="guest-or"><span>or</span></div>
+        <a class="btn ghost block" href="/home" data-guest>Continue as guest ✿</a>
+        <p class="muted small" style="text-align:center;margin:10px 0 0">Browse the shop freely. You'll log in when you're ready to add to cart.</p>
       </div>
     </div>
   </main>
@@ -101,10 +107,26 @@
     document.querySelectorAll('[data-switch]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); show(a.dataset.switch); }));
     if (location.hash === '#signup') show('signup');
 
-    function goAfterLogin(user) {
-      if (user.role === 'admin') location.href = next || '/admin';
-      else location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/home';
+    // Only follow ?next= to a page on this site (blocks //evil.com, /\evil.com, https://evil.com).
+    function safeNext() {
+      if (!next || !next.startsWith('/')) return null;
+      try {
+        const url = new URL(next, location.origin);
+        return url.origin === location.origin ? url.pathname + url.search + url.hash : null;
+      } catch { return null; }
     }
+
+    function goAfterLogin(user) {
+      location.href = safeNext() || (user.role === 'admin' ? '/admin' : '/home');
+    }
+
+    // Came here from "Add to cart" as a guest: explain why, and let "Continue as guest" go back to that page.
+    if (qs('reason') === 'cart') document.querySelector('[data-cart-notice]').classList.remove('hidden');
+    if (safeNext()) document.querySelector('[data-guest]').href = safeNext();
+    // A guest who changes their mind about logging in shouldn't get the item added later.
+    document.querySelector('[data-guest]').addEventListener('click', () => {
+      try { sessionStorage.removeItem('rs_pending_add'); } catch { /* storage unavailable */ }
+    });
 
     // Already logged in? Skip this page.
     api('/api/me').then(me => goAfterLogin(me.user)).catch(() => {});
@@ -140,7 +162,10 @@
           method: 'POST',
           body: { name: f.name.value, email: f.email.value, phone: f.phone.value, password: f.password.value },
         });
-        location.href = '/address?welcome=1';
+        // New account: ask for the address first. If they were adding to cart, go to the cart after.
+        let pending = null;
+        try { pending = sessionStorage.getItem('rs_pending_add'); } catch { /* storage unavailable */ }
+        location.href = pending ? '/address?welcome=1&next=cart' : '/address?welcome=1';
       } catch (err) {
         fail(f, err.message);
         setBusy(btn, false);

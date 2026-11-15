@@ -157,6 +157,23 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
 
+      // Payment went through Razorpay but isn't captured yet: tell the customer not to pay again.
+      function showPending(paymentId) {
+        Cart.clear();
+        root.innerHTML = `
+          <div class="card" style="text-align:center;max-width:560px;margin:0 auto 70px">
+            <div style="font-size:3rem">⏳</div>
+            <h2 class="display sm" style="font-size:2rem">Confirming your payment</h2>
+            <p>We received your payment details and are waiting for Razorpay to confirm it. <b>Please don't pay again.</b></p>
+            <p class="muted">Your order will appear in your account as soon as it's confirmed. If it doesn't show up within a few hours, message us with payment ID <b>${esc(paymentId)}</b>.</p>
+            <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:20px">
+              <a class="btn" href="/account#orders">My orders</a>
+              <a class="btn ghost" href="/home">Keep shopping</a>
+            </div>
+          </div>`;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
       async function pay(btn) {
         if (typeof Razorpay === 'undefined') return toast('Payment window could not load. Please check your internet and refresh.', true);
         setBusy(btn, true, 'Opening payment…');
@@ -178,8 +195,9 @@
           handler: async response => {
             setBusy(btn, true, 'Confirming payment…');
             try {
-              const { order } = await api('/api/checkout/verify', { method: 'POST', body: response });
-              showThanks(order);
+              const result = await api('/api/checkout/verify', { method: 'POST', body: response });
+              if (result.pending) showPending(result.paymentId);
+              else showThanks(result.order);
             } catch (err) {
               toast(err.message, true);
               setBusy(btn, false);

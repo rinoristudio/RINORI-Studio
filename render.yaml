@@ -18,3 +18,16 @@ services:
         sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false   # the secret you choose when adding the webhook
+
+  # Always-on loading page. Share THIS site's address with customers: it shows a
+  # Rinori-themed loading screen while the shop wakes up, then sends them in.
+  # If the shop above isn't at https://rinori-studio.onrender.com, update APP_URL in loader/index.html.
+  - type: web
+    name: rinori-studio-shop
+    runtime: static
+    buildCommand: echo "nothing to build"
+    staticPublishPath: ./loader
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

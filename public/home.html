@@ -108,7 +108,7 @@
   <script src="/js/common.js"></script>
   <script>
     (async () => {
-      const me = await requireUser();
+      const me = await loadUser(); // guests can browse
       renderHeader(me, 'home');
       renderFooter();
       petals();
@@ -167,6 +167,7 @@
       grid.addEventListener('click', e => {
         const b = e.target.closest('[data-add]');
         if (!b) return;
+        if (!me.user) return askToLogin(b.dataset.add);
         Cart.add(b.dataset.add);
         toast('Added to your cart');
       });
