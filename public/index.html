@@ -97,6 +97,7 @@
   <script>
     const forms = { login: document.getElementById('login-form'), signup: document.getElementById('signup-form') };
     const next = qs('next');
+    addPasswordToggles();
 
     function show(tab) {
       document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));

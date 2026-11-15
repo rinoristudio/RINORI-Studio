@@ -75,8 +75,8 @@ const loginUrl = (extra = '') => '/?next=' + encodeURIComponent(location.pathnam
 
 // A guest tried to add to cart: remember the item, then send them to log in.
 // After logging in they come back here and the item is added (see renderHeader).
-function askToLogin(productId, qty = 1, then = '') {
-  try { sessionStorage.setItem('rs_pending_add', JSON.stringify({ productId, qty, then })); } catch { /* storage unavailable */ }
+function askToLogin(productId, qty = 1, then = '', variantId = '') {
+  try { sessionStorage.setItem('rs_pending_add', JSON.stringify({ productId, variantId, qty, then })); } catch { /* storage unavailable */ }
   location.href = loginUrl('&reason=cart');
 }
 
@@ -87,7 +87,7 @@ function addPendingItem() {
     sessionStorage.removeItem('rs_pending_add');
   } catch { /* storage unavailable */ }
   if (!pending?.productId) return;
-  Cart.add(pending.productId, Math.max(1, Math.min(20, Number(pending.qty) || 1)));
+  Cart.add(pending.productId, Math.max(1, Math.min(20, Number(pending.qty) || 1)), pending.variantId || '');
   // "Buy now" goes on to the cart, except right after sign-up, where the address form comes first.
   if (pending.then === 'cart' && !location.pathname.startsWith('/address')) location.href = '/cart';
   else toast('Added to your cart');
@@ -110,17 +110,20 @@ const Cart = {
     try { localStorage.setItem(this.key, JSON.stringify(items)); } catch { /* storage unavailable */ }
     updateCartBadge();
   },
-  add(productId, qty = 1) {
+  // One line per product and colour. lineKey() identifies a line: "productId" or "productId:variantId".
+  lineKey: i => i.productId + (i.variantId ? ':' + i.variantId : ''),
+  add(productId, qty = 1, variantId = '') {
     const items = this.read();
-    const line = items.find(i => i.productId === productId);
+    const k = this.lineKey({ productId, variantId });
+    const line = items.find(i => this.lineKey(i) === k);
     if (line) line.qty = Math.min(20, line.qty + qty);
-    else items.push({ productId, qty });
+    else items.push(variantId ? { productId, variantId, qty } : { productId, qty });
     this.write(items);
   },
-  set(productId, qty) {
-    this.write(this.read().map(i => (i.productId === productId ? { ...i, qty } : i)).filter(i => i.qty > 0));
+  set(key, qty) {
+    this.write(this.read().map(i => (this.lineKey(i) === key ? { ...i, qty } : i)).filter(i => i.qty > 0));
   },
-  remove(productId) { this.write(this.read().filter(i => i.productId !== productId)); },
+  remove(key) { this.write(this.read().filter(i => this.lineKey(i) !== key)); },
   clear() { this.write([]); },
   count() { return this.read().reduce((s, i) => s + i.qty, 0); },
 };
@@ -239,6 +242,34 @@ function petals(count = 14) {
     wrap.appendChild(p);
   }
   document.body.appendChild(wrap);
+}
+
+// Adds a show/hide eye button to every password box on the page.
+const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+function addPasswordToggles(root = document) {
+  root.querySelectorAll('input[type=password]:not([data-pw-ready])').forEach(input => {
+    input.dataset.pwReady = '1';
+    const wrap = document.createElement('div');
+    wrap.className = 'pw-wrap';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-toggle';
+    btn.setAttribute('aria-label', 'Show password');
+    btn.setAttribute('aria-pressed', 'false');
+    btn.innerHTML = EYE;
+    btn.addEventListener('click', () => {
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.innerHTML = show ? EYE_OFF : EYE;
+      btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      btn.setAttribute('aria-pressed', String(show));
+      input.focus();
+    });
+    wrap.appendChild(btn);
+  });
 }
 
 function formatAddress(a) {

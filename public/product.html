@@ -35,13 +35,18 @@
       document.title = `${p.name} · Rinori Studio`;
       const out = p.stock === 0;
       let qty = 1;
+      // Colour options: start on the colour from ?colour=, else the first one in stock.
+      const colours = p.variants || [];
+      let chosen = colours.find(v => v.id === qs('colour') && v.stock > 0) || colours.find(v => v.stock > 0) || null;
+      const stockNow = () => (chosen ? chosen.stock : p.stock);
+      const stockText = n => (n === 0 ? '<b style="color:var(--danger)">Sold out</b>' : n <= 5 ? `<b>Only ${n} left!</b>` : 'In stock');
 
       root.innerHTML = `
         <div class="product-page">
           <div class="gallery">
             <span class="tape"></span>
             <span class="flower"></span>
-            <div class="gallery-main"><img data-main src="${esc(p.images[0])}" alt="${esc(p.name)}"></div>
+            <div class="gallery-main"><img data-main src="${esc((chosen && chosen.image) || p.images[0])}" alt="${esc(p.name)}"></div>
             ${p.images.length > 1 ? `<div class="thumbs">${p.images.map((src, i) =>
               `<button type="button" class="${i === 0 ? 'active' : ''}" data-src="${esc(src)}" aria-label="Photo ${i + 1}"><img src="${esc(src)}" alt=""></button>`).join('')}</div>` : ''}
           </div>
@@ -49,8 +54,20 @@
             <span class="pill">${esc(p.category)}</span>
             <h1 style="margin-top:10px">${esc(p.name)}</h1>
             <div class="price">${inr(p.price)}${p.mrp && p.mrp > p.price ? `<s>${inr(p.mrp)}</s>` : ''}</div>
-            <p class="small muted" style="margin:2px 0 0">Inclusive of all taxes · ${out ? '<b style="color:var(--danger)">Sold out</b>' : p.stock <= 5 ? `<b>Only ${p.stock} left!</b>` : 'In stock'}</p>
+            <p class="small muted" style="margin:2px 0 0">Inclusive of all taxes · <span data-stock>${stockText(stockNow())}</span></p>
             <p style="white-space:pre-line;margin-top:18px">${esc(p.description)}</p>
+            ${colours.length ? `
+              <div class="colour-pick">
+                <div class="small" style="font-weight:700;margin-bottom:8px">Colour: <span data-colour-name>${chosen ? esc(chosen.name) : 'Sold out'}</span></div>
+                <div class="swatches" role="radiogroup" aria-label="Choose a colour">
+                  ${colours.map(v => `
+                    <button type="button" class="swatch ${chosen && v.id === chosen.id ? 'active' : ''}" role="radio"
+                      aria-checked="${chosen && v.id === chosen.id}" data-colour="${esc(v.id)}" ${v.stock === 0 ? 'disabled' : ''}
+                      title="${esc(v.name)}${v.stock === 0 ? ' (sold out)' : ''}">
+                      <i style="background:${esc(v.color)}"></i><span>${esc(v.name)}</span>
+                    </button>`).join('')}
+                </div>
+              </div>` : ''}
             <div class="buy-row">
               <div class="qty" ${out ? 'hidden' : ''}>
                 <button type="button" data-q="-1" aria-label="Less">−</button><span data-qty>1</span><button type="button" data-q="1" aria-label="More">+</button>
@@ -73,17 +90,33 @@
         root.querySelectorAll('[data-src]').forEach(x => x.classList.toggle('active', x === b));
       }));
       root.querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', () => {
-        qty = Math.max(1, Math.min(Math.min(20, p.stock), qty + Number(b.dataset.q)));
+        qty = Math.max(1, Math.min(Math.min(20, stockNow()), qty + Number(b.dataset.q)));
         root.querySelector('[data-qty]').textContent = qty;
       }));
+      root.querySelectorAll('[data-colour]').forEach(b => b.addEventListener('click', () => {
+        chosen = colours.find(v => v.id === b.dataset.colour);
+        root.querySelectorAll('[data-colour]').forEach(x => {
+          x.classList.toggle('active', x === b);
+          x.setAttribute('aria-checked', String(x === b));
+        });
+        root.querySelector('[data-colour-name]').textContent = chosen.name;
+        root.querySelector('[data-stock]').innerHTML = stockText(chosen.stock);
+        qty = Math.min(qty, Math.max(1, chosen.stock));
+        root.querySelector('[data-qty]').textContent = qty;
+        // Show this colour's photo, if it has one.
+        const src = chosen.image || p.images[0];
+        root.querySelector('[data-main]').src = src;
+        root.querySelectorAll('[data-src]').forEach(x => x.classList.toggle('active', x.dataset.src === src));
+      }));
+      const variantId = () => (chosen ? chosen.id : '');
       root.querySelector('[data-add]').addEventListener('click', () => {
-        if (!me.user) return askToLogin(p.id, qty);
-        Cart.add(p.id, qty);
-        toast('Added to your cart');
+        if (!me.user) return askToLogin(p.id, qty, '', variantId());
+        Cart.add(p.id, qty, variantId());
+        toast(chosen ? `Added ${chosen.name} to your cart` : 'Added to your cart');
       });
       root.querySelector('[data-buy]').addEventListener('click', () => {
-        if (!me.user) return askToLogin(p.id, qty, 'cart');
-        Cart.add(p.id, qty);
+        if (!me.user) return askToLogin(p.id, qty, 'cart', variantId());
+        Cart.add(p.id, qty, variantId());
         location.href = '/cart';
       });
     })();
