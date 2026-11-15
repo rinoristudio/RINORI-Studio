@@ -381,14 +381,15 @@ app.delete('/api/me/addresses/:id', auth, h(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// Products (for logged-in shoppers)
-app.get('/api/products', auth, h(async (req, res) => {
+// Products (anyone can browse, guests included; cart and checkout need a login)
+app.get('/api/products', h(async (req, res) => {
   const { rows } = await query('SELECT * FROM products WHERE active ORDER BY created_at DESC');
   res.json({ products: rows.map(toProduct) });
 }));
 
-app.get('/api/products/:id', auth, h(async (req, res) => {
-  const { rows } = await query('SELECT * FROM products WHERE id = $1 AND (active OR $2)', [req.params.id, req.user.role === 'admin']);
+app.get('/api/products/:id', h(async (req, res) => {
+  const user = await currentUser(req);
+  const { rows } = await query('SELECT * FROM products WHERE id = $1 AND (active OR $2)', [req.params.id, user?.role === 'admin']);
   if (!rows[0]) return res.status(404).json({ error: 'Product not found' });
   res.json({ product: toProduct(rows[0]) });
 }));

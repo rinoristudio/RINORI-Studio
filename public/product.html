@@ -19,7 +19,7 @@
   <script src="/js/common.js"></script>
   <script>
     (async () => {
-      const me = await requireUser();
+      const me = await loadUser(); // guests can browse
       renderHeader(me);
       renderFooter();
       petals(8);
@@ -76,8 +76,16 @@
         qty = Math.max(1, Math.min(Math.min(20, p.stock), qty + Number(b.dataset.q)));
         root.querySelector('[data-qty]').textContent = qty;
       }));
-      root.querySelector('[data-add]').addEventListener('click', () => { Cart.add(p.id, qty); toast('Added to your cart'); });
-      root.querySelector('[data-buy]').addEventListener('click', () => { Cart.add(p.id, qty); location.href = '/cart'; });
+      root.querySelector('[data-add]').addEventListener('click', () => {
+        if (!me.user) return askToLogin(p.id, qty);
+        Cart.add(p.id, qty);
+        toast('Added to your cart');
+      });
+      root.querySelector('[data-buy]').addEventListener('click', () => {
+        if (!me.user) return askToLogin(p.id, qty, 'cart');
+        Cart.add(p.id, qty);
+        location.href = '/cart';
+      });
     })();
   </script>
 </body>

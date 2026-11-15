@@ -61,6 +61,38 @@ async function requireUser({ admin = false } = {}) {
   }
 }
 
+// For pages guests may browse (home, product): the logged-in user, or a guest ({ user: null }).
+async function loadUser() {
+  try {
+    return await api('/api/me');
+  } catch (err) {
+    if (err.status === 401) return { user: null, unread: 0, guest: true };
+    throw err;
+  }
+}
+
+const loginUrl = (extra = '') => '/?next=' + encodeURIComponent(location.pathname + location.search) + extra;
+
+// A guest tried to add to cart: remember the item, then send them to log in.
+// After logging in they come back here and the item is added (see renderHeader).
+function askToLogin(productId, qty = 1, then = '') {
+  try { sessionStorage.setItem('rs_pending_add', JSON.stringify({ productId, qty, then })); } catch { /* storage unavailable */ }
+  location.href = loginUrl('&reason=cart');
+}
+
+function addPendingItem() {
+  let pending = null;
+  try {
+    pending = JSON.parse(sessionStorage.getItem('rs_pending_add'));
+    sessionStorage.removeItem('rs_pending_add');
+  } catch { /* storage unavailable */ }
+  if (!pending?.productId) return;
+  Cart.add(pending.productId, Math.max(1, Math.min(20, Number(pending.qty) || 1)));
+  // "Buy now" goes on to the cart, except right after sign-up, where the address form comes first.
+  if (pending.then === 'cart' && !location.pathname.startsWith('/address')) location.href = '/cart';
+  else toast('Added to your cart');
+}
+
 async function logout() {
   await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
   location.href = '/';
@@ -115,12 +147,29 @@ const ICONS = {
 };
 
 function renderHeader(me, active = '') {
-  Cart.init(me.user.id);
-  const isAdmin = me.user.role === 'admin';
   const link = (href, icon, label, key, extra = '') =>
     `<a href="${href}" class="${active === key ? 'active' : ''}" aria-label="${label}">${ICONS[icon]}<span class="label">${label}</span>${extra}</a>`;
   const header = document.createElement('header');
   header.className = 'site-header';
+
+  if (!me.user) {
+    // Guest: browse freely; cart, account and orders need a login.
+    header.innerHTML = `
+      <div class="container">
+        <a class="brand" href="/home"><img src="${LOGO}" alt=""><span>RINORI STUDIO</span></a>
+        <nav class="nav">
+          ${link('/home', 'shop', 'Shop', 'home')}
+          ${link(loginUrl('&reason=cart'), 'bag', 'Cart', 'cart')}
+          ${link(loginUrl(), 'user', 'Log in', 'login')}
+        </nav>
+      </div>`;
+    document.body.prepend(header);
+    document.body.prepend(announceBar());
+    return;
+  }
+
+  Cart.init(me.user.id);
+  const isAdmin = me.user.role === 'admin';
   header.innerHTML = `
     <div class="container">
       <a class="brand" href="/home"><img src="${LOGO}" alt=""><span>RINORI STUDIO</span></a>
@@ -136,6 +185,7 @@ function renderHeader(me, active = '') {
   document.body.prepend(header);
   document.body.prepend(announceBar());
   header.querySelector('[data-logout]').addEventListener('click', logout);
+  addPendingItem();
   updateCartBadge();
 }
 
