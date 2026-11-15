@@ -152,7 +152,7 @@
           </div>
         </div>
         <div class="order-items">
-          ${o.items.map(i => `<div class="it"><img src="${esc(i.image)}" alt=""><div>${esc(i.name)} <span class="muted">× ${i.qty} @ ${inr(i.price)}</span></div><b style="margin-left:auto">${inr(i.price * i.qty)}</b></div>`).join('')}
+          ${o.items.map(i => `<div class="it"><img src="${esc(i.image)}" alt=""><div>${esc(i.name)}${i.color ? ` <span class="pill">${esc(i.color)}</span>` : ''} <span class="muted">× ${i.qty} @ ${inr(i.price)}</span></div><b style="margin-left:auto">${inr(i.price * i.qty)}</b></div>`).join('')}
         </div>
         <div class="small">Subtotal ${inr(o.subtotal)} · Speed Post ${o.shipping ? inr(o.shipping) : 'free'} · <b>Total ${inr(o.total)}</b></div>
         ${o.note ? `<div class="notice small" style="margin-top:10px">📝 Customer note: ${esc(o.note)}</div>` : ''}
@@ -185,6 +185,7 @@
           <div>
             <b>${esc(p.name)}</b> ${p.active ? '' : '<span class="pill">Hidden</span>'}
             <div class="small muted">${esc(p.category)} · ${inr(p.price)} · ${p.shipping ? `Shipping ${inr(p.shipping)}` : 'Free shipping'} · Stock ${p.stock} · ${p.images.length} photo${p.images.length === 1 ? '' : 's'}</div>
+            ${p.variants.length ? `<div class="swatch-list small">${p.variants.map(v => `<span class="swatch-chip"><i style="background:${esc(v.color)}"></i>${esc(v.name)} · ${v.stock}</span>`).join('')}</div>` : ''}
           </div>
           <div class="actions">
             <button class="btn small soft" data-edit="${p.id}">Edit</button>
@@ -208,7 +209,12 @@
             <label for="pf-ship">Speed Post shipping (₹) <span class="opt">0 = free shipping</span></label>
             <input id="pf-ship" name="shipping" type="number" min="0" step="1" value="${p?.shipping ?? 0}" required>
           </div>
-          <div class="field"><label for="pf-stock">Stock</label><input id="pf-stock" name="stock" type="number" min="0" step="1" value="${p?.stock ?? 10}" required></div>
+          <div class="field"><label for="pf-stock">Stock <span class="opt hidden" data-stock-hint>(set per colour below)</span></label><input id="pf-stock" name="stock" type="number" min="0" step="1" value="${p?.stock ?? 10}" required></div>
+        </div>
+        <div class="field">
+          <label>Colours <span class="opt">(optional · the same product in different colours, each with its own stock and photo. Customers pick their favourite.)</span></label>
+          <div data-colours>${(p?.variants || []).map(colourRow).join('')}</div>
+          <div><button type="button" class="btn small soft" data-add-colour>+ Add colour</button></div>
         </div>
         <div class="field"><label for="pf-cat">Category</label><input id="pf-cat" name="category" maxlength="60" list="cats" value="${esc(p?.category || '')}" placeholder="e.g. Scrunchies, Bows, Gifts">
           <datalist id="cats">${[...new Set(state.products.map(x => x.category))].map(c => `<option value="${esc(c)}">`).join('')}</datalist></div>
@@ -238,6 +244,56 @@
       `<div class="im"><img src="${URL.createObjectURL(f)}" alt=""><button type="button" data-remove-new="${i}" aria-label="Remove photo">×</button></div>`).join('');
     const total = panel.querySelectorAll('[data-keep]').length + state.newFiles.length;
     panel.querySelector('[data-photo-count]').textContent = `${total} of ${MAX_PHOTOS} photos`;
+    refreshColourPhotos();
+    updateStockField();
+  }
+
+  // ---------- colours ----------
+
+  function colourRow(v = {}) {
+    return `
+      <div class="colour-row" data-colour-row data-id="${esc(v.id || '')}">
+        <input type="color" data-c-color value="${esc(v.color || '#f2709a')}" aria-label="Colour swatch">
+        <input data-c-name maxlength="40" placeholder="Colour name, e.g. Dusk Blue" value="${esc(v.name || '')}" aria-label="Colour name">
+        <label class="mini c-stock">Stock<input data-c-stock type="number" min="0" step="1" value="${v.stock ?? 5}"></label>
+        <label class="mini c-photo">Photo<select data-c-image data-selected="${esc(v.image || '')}"></select></label>
+        <button type="button" class="colour-remove" data-remove-colour aria-label="Remove colour">×</button>
+      </div>`;
+  }
+
+  // Photo choices for each colour: the kept photos and the ones picked in this edit.
+  function refreshColourPhotos() {
+    const kept = [...panel.querySelectorAll('[data-keep]')].map(el => el.dataset.keep);
+    const options = [['', 'Cover photo'], ...kept.map((src, i) => [src, `Photo ${i + 1}`]),
+      ...state.newFiles.map((f, i) => [`new:${i}`, `New photo ${i + 1}`])];
+    panel.querySelectorAll('[data-c-image]').forEach(sel => {
+      const current = sel.value || sel.dataset.selected || '';
+      sel.innerHTML = options.map(([value, label]) => `<option value="${esc(value)}">${esc(label)}</option>`).join('');
+      sel.value = options.some(([value]) => value === current) ? current : '';
+      sel.dataset.selected = sel.value;
+    });
+  }
+
+  // With colours, stock is set per colour, so the single stock box is switched off.
+  function updateStockField() {
+    const stock = panel.querySelector('#pf-stock');
+    if (!stock) return;
+    const hasColours = !!panel.querySelector('[data-colour-row]');
+    stock.disabled = hasColours;
+    panel.querySelector('[data-stock-hint]').classList.toggle('hidden', !hasColours);
+    if (hasColours) {
+      stock.value = [...panel.querySelectorAll('[data-c-stock]')].reduce((s, el) => s + (Number(el.value) || 0), 0);
+    }
+  }
+
+  function readColours(f) {
+    return [...f.querySelectorAll('[data-colour-row]')].map(row => ({
+      id: row.dataset.id,
+      name: row.querySelector('[data-c-name]').value.trim(),
+      color: row.querySelector('[data-c-color]').value,
+      stock: Number(row.querySelector('[data-c-stock]').value),
+      image: row.querySelector('[data-c-image]').value,
+    }));
   }
 
   // ---------- routing ----------
@@ -294,8 +350,26 @@
         t.closest('.im').remove();
         renderPreviews();
       } else if (t.dataset.removeNew !== undefined) {
-        state.newFiles.splice(Number(t.dataset.removeNew), 1);
+        const gone = Number(t.dataset.removeNew);
+        state.newFiles.splice(gone, 1);
+        // Keep each colour pointing at the same new photo after the list shifts.
+        panel.querySelectorAll('[data-c-image]').forEach(sel => {
+          const m = /^new:(\d+)$/.exec(sel.value);
+          if (!m) return;
+          const n = Number(m[1]);
+          sel.dataset.selected = n === gone ? '' : n > gone ? `new:${n - 1}` : sel.value;
+          sel.value = '';
+        });
         renderPreviews();
+      } else if (t.hasAttribute('data-add-colour')) {
+        if (panel.querySelectorAll('[data-colour-row]').length >= 20) return toast('Up to 20 colours per product', true);
+        panel.querySelector('[data-colours]').insertAdjacentHTML('beforeend', colourRow());
+        refreshColourPhotos();
+        updateStockField();
+        panel.querySelector('[data-colour-row]:last-child [data-c-name]').focus();
+      } else if (t.hasAttribute('data-remove-colour')) {
+        t.closest('[data-colour-row]').remove();
+        updateStockField();
       } else if (t.dataset.messageUser) {
         state.messageTo = t.dataset.messageUser;
         go('message');
@@ -331,6 +405,7 @@
   });
 
   panel.addEventListener('input', e => {
+    if (e.target.matches('[data-c-stock]')) return updateStockField();
     if (!e.target.matches('[data-order-search]')) return;
     state.search = e.target.value;
     const pos = e.target.selectionStart;
@@ -359,6 +434,7 @@
         fd.set('active', f.active.checked);
         fd.set('notify', f.notify.checked);
         fd.set('keepImages', JSON.stringify([...f.querySelectorAll('[data-keep]')].map(el => el.dataset.keep)));
+        fd.set('variants', JSON.stringify(readColours(f)));
         state.newFiles.forEach(file => fd.append('images', file));
         await api('/api/admin/products' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body: fd });
         toast(id ? 'Product saved' : 'Product added');

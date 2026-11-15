@@ -35,20 +35,31 @@
       let noteDraft = '';
       let selectedAddress = (addresses.find(a => a.isDefault) || addresses[0] || {}).id;
 
-      // Drop anything that is no longer for sale.
-      Cart.write(Cart.read().filter(i => byId[i.productId]));
+      // Drop anything that is no longer for sale, including colours that were removed.
+      const variantOf = i => byId[i.productId]?.variants.find(v => v.id === i.variantId);
+      Cart.write(Cart.read().filter(i => byId[i.productId] && (!i.variantId || variantOf(i))));
 
       function render() {
-        const lines = Cart.read().map(i => ({ ...i, p: byId[i.productId] }));
+        const lines = Cart.read().map(i => {
+          const p = byId[i.productId];
+          const v = variantOf(i) || null;
+          return {
+            ...i, p, v, key: Cart.lineKey(i),
+            stock: v ? v.stock : p.stock,
+            image: (v && v.image) || p.images[0],
+            needsColour: p.variants.length > 0 && !v, // added before the product had colours
+          };
+        });
         if (!lines.length) {
           root.innerHTML = `<div class="card empty" style="margin-bottom:70px"><div class="ico">🛍️</div><p>Your bag is empty. Let's find something cute!</p><a class="btn" href="/home#shop">Start shopping</a></div>`;
           return;
         }
         const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
-        const shipping = lines.reduce((s, l) => s + l.p.shipping, 0);
+        // Shipping is charged once per product, even with several colours of it.
+        const shipping = [...new Map(lines.map(l => [l.p.id, l.p.shipping])).values()].reduce((s, n) => s + n, 0);
         const total = subtotal + shipping;
         const pay = me.payment;
-        const tooMany = lines.some(l => l.qty > l.p.stock);
+        const tooMany = lines.some(l => l.qty > l.stock || l.needsColour);
 
         root.innerHTML = `
           <div class="cart-layout">
@@ -57,18 +68,20 @@
                 <h2 class="section-title">Items</h2>
                 ${lines.map(l => `
                   <div class="cart-item">
-                    <a href="/product?id=${l.p.id}"><img src="${esc(l.p.images[0])}" alt=""></a>
+                    <a href="/product?id=${l.p.id}"><img src="${esc(l.image)}" alt=""></a>
                     <div>
                       <a href="/product?id=${l.p.id}" style="color:var(--berry);font-weight:700">${esc(l.p.name)}</a>
+                      ${l.v ? `<div class="small"><span class="swatch-chip"><i style="background:${esc(l.v.color)}"></i>${esc(l.v.name)}</span></div>` : ''}
                       <div class="muted small">${inr(l.p.price)} each · ${l.p.shipping ? `${inr(l.p.shipping)} shipping` : 'Free shipping'}</div>
-                      ${l.qty > l.p.stock ? `<div class="small" style="color:var(--danger)">Only ${l.p.stock} in stock</div>` : ''}
+                      ${l.needsColour ? `<div class="small" style="color:var(--danger)">Please <a href="/product?id=${l.p.id}">choose a colour</a> and remove this one</div>`
+                        : l.qty > l.stock ? `<div class="small" style="color:var(--danger)">Only ${l.stock} in stock</div>` : ''}
                     </div>
                     <div class="right">
                       <div class="qty">
-                        <button type="button" data-dec="${l.p.id}" aria-label="Less">−</button><span>${l.qty}</span><button type="button" data-inc="${l.p.id}" aria-label="More">+</button>
+                        <button type="button" data-dec="${esc(l.key)}" aria-label="Less">−</button><span>${l.qty}</span><button type="button" data-inc="${esc(l.key)}" aria-label="More">+</button>
                       </div>
                       <b>${inr(l.p.price * l.qty)}</b>
-                      <button class="linkbtn" data-remove="${l.p.id}">Remove</button>
+                      <button class="linkbtn" data-remove="${esc(l.key)}">Remove</button>
                     </div>
                   </div>`).join('')}
               </div>
@@ -123,14 +136,15 @@
       root.addEventListener('click', async e => {
         const t = e.target.closest('button');
         if (!t) return;
-        const line = id => Cart.read().find(i => i.productId === id);
+        const line = key => Cart.read().find(i => Cart.lineKey(i) === key);
         if (t.dataset.inc) {
           const l = line(t.dataset.inc);
-          Cart.set(l.productId, Math.min(20, byId[l.productId].stock, l.qty + 1));
+          const stock = (variantOf(l) || byId[l.productId]).stock;
+          Cart.set(t.dataset.inc, Math.min(20, stock, l.qty + 1));
           render();
         } else if (t.dataset.dec) {
           const l = line(t.dataset.dec);
-          if (l.qty > 1) Cart.set(l.productId, l.qty - 1);
+          if (l.qty > 1) Cart.set(t.dataset.dec, l.qty - 1);
           render();
         } else if (t.dataset.remove) {
           Cart.remove(t.dataset.remove);

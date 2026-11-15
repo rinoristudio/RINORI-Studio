@@ -125,6 +125,19 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number TEXT NOT NULL DEFAUL
 -- v3: Razorpay Checkout
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_order_id TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS orders_razorpay_idx ON orders(razorpay_order_id);
+
+-- v4: colour options. A product with colours keeps stock per colour;
+-- products.stock is then the total of its colours.
+CREATE TABLE IF NOT EXISTS product_variants (
+  id         TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  color      TEXT NOT NULL DEFAULT '#f2709a',
+  stock      INTEGER NOT NULL DEFAULT 0,
+  image      TEXT NOT NULL DEFAULT '',
+  position   INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS product_variants_product_idx ON product_variants(product_id);
 `;
 
 module.exports = { pool, query, transaction, SCHEMA };

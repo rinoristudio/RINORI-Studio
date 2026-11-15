@@ -42,10 +42,52 @@ const toAddress = r => ({
   type: r.type, isDefault: r.is_default,
 });
 
-const toProduct = r => ({
+const toVariant = r => ({ id: r.id, name: r.name, color: r.color, stock: r.stock, image: r.image });
+
+const toProduct = (r, variants = []) => ({
   id: r.id, name: r.name, category: r.category, description: r.description, price: r.price, mrp: r.mrp,
   shipping: r.shipping, stock: r.stock, active: r.active, images: r.images, createdAt: r.created_at,
+  variants,
 });
+
+// Turns product rows into products with their colour options attached.
+async function productsWithVariants(rows, db = { query }) {
+  if (!rows.length) return [];
+  const { rows: vrows } = await db.query(
+    'SELECT * FROM product_variants WHERE product_id = ANY($1) ORDER BY position, name',
+    [rows.map(r => r.id)],
+  );
+  const byProduct = {};
+  vrows.forEach(v => (byProduct[v.product_id] ||= []).push(toVariant(v)));
+  return rows.map(r => toProduct(r, byProduct[r.id] || []));
+}
+
+// Changes stock for one order line (by colour when the line has one). delta < 0 takes stock.
+// With mustHaveEnough, nothing changes unless there is enough; returns false in that case.
+async function changeStock(db, item, delta, mustHaveEnough = false) {
+  // $3 is the minimum stock needed: -delta when taking stock with a check, otherwise no limit.
+  const minimum = mustHaveEnough ? -delta : -2147483648;
+  if (item.variantId) {
+    const r = await db.query(
+      'UPDATE product_variants SET stock = stock + $2 WHERE id = $1 AND product_id = $4 AND stock >= $3',
+      [item.variantId, delta, minimum, item.productId],
+    );
+    if (!r.rowCount) return false;
+    await syncProductStock(db, item.productId);
+    return true;
+  }
+  const r = await db.query('UPDATE products SET stock = stock + $2 WHERE id = $1 AND stock >= $3', [item.productId, delta, minimum]);
+  return r.rowCount > 0;
+}
+
+// A product with colours shows the total stock of its colours.
+function syncProductStock(db, productId) {
+  return db.query(
+    `UPDATE products SET stock = (SELECT coalesce(sum(stock), 0) FROM product_variants WHERE product_id = $1)
+     WHERE id = $1 AND EXISTS (SELECT 1 FROM product_variants WHERE product_id = $1)`,
+    [productId],
+  );
+}
 
 const toOrder = r => ({
   id: r.id, number: r.number, userId: r.user_id, customer: r.customer, address: r.address, items: r.items,
@@ -384,14 +426,14 @@ app.delete('/api/me/addresses/:id', auth, h(async (req, res) => {
 // Products (anyone can browse, guests included; cart and checkout need a login)
 app.get('/api/products', h(async (req, res) => {
   const { rows } = await query('SELECT * FROM products WHERE active ORDER BY created_at DESC');
-  res.json({ products: rows.map(toProduct) });
+  res.json({ products: await productsWithVariants(rows) });
 }));
 
 app.get('/api/products/:id', h(async (req, res) => {
   const user = await currentUser(req);
   const { rows } = await query('SELECT * FROM products WHERE id = $1 AND (active OR $2)', [req.params.id, user?.role === 'admin']);
   if (!rows[0]) return res.status(404).json({ error: 'Product not found' });
-  res.json({ product: toProduct(rows[0]) });
+  res.json({ product: (await productsWithVariants(rows))[0] });
 }));
 
 // Orders
@@ -417,10 +459,19 @@ app.post('/api/checkout', auth, h(async (req, res) => {
       const qty = Number(line.qty);
       if (!Number.isInteger(qty) || qty < 1 || qty > 20) throw new UserError('Invalid quantity');
       const { rows } = await query('SELECT * FROM products WHERE id = $1 AND active', [String(line.productId)]);
-      const product = rows[0];
+      const [product] = await productsWithVariants(rows);
       if (!product) throw new UserError('A product in your cart is no longer available');
-      if (product.stock < qty) throw new UserError(`Only ${product.stock} left of "${product.name}"`);
-      items.push({ productId: product.id, name: product.name, price: product.price, shipping: product.shipping, qty, image: product.images[0] || '' });
+      const item = { productId: product.id, name: product.name, price: product.price, shipping: product.shipping, qty, image: product.images[0] || '' };
+      if (product.variants.length) {
+        // Products with colours must be bought in a specific colour.
+        const variant = product.variants.find(v => v.id === String(line.variantId || ''));
+        if (!variant) throw new UserError(`Please choose a colour for "${product.name}"`);
+        if (variant.stock < qty) throw new UserError(`Only ${variant.stock} left of "${product.name}" in ${variant.name}`);
+        Object.assign(item, { variantId: variant.id, color: variant.name, image: variant.image || item.image });
+      } else if (product.stock < qty) {
+        throw new UserError(`Only ${product.stock} left of "${product.name}"`);
+      }
+      items.push(item);
     }
   } catch (err) {
     if (err instanceof UserError) return res.status(400).json({ error: err.message });
@@ -428,8 +479,10 @@ app.post('/api/checkout', auth, h(async (req, res) => {
   }
 
   const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
-  // Each product carries its own Speed Post charge, counted once per product (0 = free).
-  const shipping = items.reduce((s, i) => s + i.shipping, 0);
+  // Each product carries its own Speed Post charge, counted once per product (0 = free),
+  // even when several colours of it are ordered.
+  const shippingByProduct = new Map(items.map(i => [i.productId, i.shipping]));
+  const shipping = [...shippingByProduct.values()].reduce((s, n) => s + n, 0);
   const total = subtotal + shipping;
   const number = orderNumber();
 
@@ -478,8 +531,7 @@ async function markPaid(razorpayOrderId, paymentId) {
 
     let short = false;
     for (const item of order.items) {
-      const r = await db.query('UPDATE products SET stock = stock - $2 WHERE id = $1 AND stock >= $2', [item.productId, item.qty]);
-      if (!r.rowCount) short = true;
+      if (!(await changeStock(db, item, -item.qty, true))) short = true;
     }
     const message = short
       ? 'Payment received · some items sold out meanwhile, we will contact you'
@@ -552,17 +604,16 @@ app.get('/api/orders', auth, h(async (req, res) => {
 // and taking it back again if a cancelled order is reopened.
 async function setOrderStatus(db, order, status, message) {
   if (status === 'Cancelled' && order.status !== 'Cancelled') {
-    for (const item of order.items) {
-      await db.query('UPDATE products SET stock = stock + $2 WHERE id = $1', [item.productId, item.qty]);
-    }
+    for (const item of order.items) await changeStock(db, item, item.qty);
   } else if (order.status === 'Cancelled' && status !== 'Cancelled') {
     for (const item of order.items) {
-      const r = await db.query('UPDATE products SET stock = stock - $2 WHERE id = $1 AND stock >= $2', [item.productId, item.qty]);
-      // A deleted product has no stock to take; a product that sold out meanwhile blocks the reopen.
-      if (!r.rowCount) {
-        const exists = await db.query('SELECT stock FROM products WHERE id = $1', [item.productId]);
-        if (exists.rowCount) throw new UserError(`Not enough stock of "${item.name}" to reopen this order (${exists.rows[0].stock} left)`);
-      }
+      if (await changeStock(db, item, -item.qty, true)) continue;
+      // A deleted product or colour has no stock to take; one that sold out meanwhile blocks the reopen.
+      const exists = item.variantId
+        ? await db.query('SELECT stock FROM product_variants WHERE id = $1', [item.variantId])
+        : await db.query('SELECT stock FROM products WHERE id = $1', [item.productId]);
+      const label = item.color ? `"${item.name}" in ${item.color}` : `"${item.name}"`;
+      if (exists.rowCount) throw new UserError(`Not enough stock of ${label} to reopen this order (${exists.rows[0].stock} left)`);
     }
   }
   const entry = { status, message, at: new Date().toISOString() };
@@ -594,7 +645,14 @@ app.get('/api/admin/stats', adminOnly, h(async (req, res) => {
       (SELECT coalesce(sum(total),0)::int FROM orders WHERE status NOT IN ('Cancelled','Awaiting payment')) AS revenue,
       (SELECT count(*)::int FROM users WHERE role = 'customer') AS customers,
       (SELECT count(*)::int FROM products) AS products`);
-  const low = await query('SELECT id, name, stock FROM products WHERE stock <= 5 ORDER BY stock');
+  // Low stock: products without colours, plus each colour that is running low.
+  const low = await query(`
+    SELECT p.id, p.name, p.stock FROM products p
+      WHERE p.stock <= 5 AND NOT EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id)
+    UNION ALL
+    SELECT p.id, p.name || ' (' || v.name || ')', v.stock FROM product_variants v JOIN products p ON p.id = v.product_id
+      WHERE v.stock <= 5
+    ORDER BY stock`);
   res.json({ ...s, lowStock: low.rows });
 }));
 
@@ -633,8 +691,56 @@ app.put('/api/admin/orders/:id', adminOnly, h(async (req, res) => {
 
 app.get('/api/admin/products', adminOnly, h(async (req, res) => {
   const { rows } = await query('SELECT * FROM products ORDER BY created_at DESC');
-  res.json({ products: rows.map(toProduct) });
+  res.json({ products: await productsWithVariants(rows) });
 }));
+
+const MAX_COLOURS = 20;
+
+// Colour options sent by the admin form as JSON: [{ id?, name, color: '#rrggbb', stock, image }].
+// image is a kept photo's URL, "new:<n>" for the n-th photo uploaded in this save, or ''.
+function variantFields(raw) {
+  let list;
+  try { list = JSON.parse(raw || '[]'); } catch { return { error: 'Could not read the colour options' }; }
+  if (!Array.isArray(list)) return { error: 'Could not read the colour options' };
+  if (list.length > MAX_COLOURS) return { error: `A product can have up to ${MAX_COLOURS} colours` };
+  const variants = [];
+  const names = new Set();
+  for (const v of list) {
+    const variant = {
+      id: typeof v.id === 'string' ? v.id.slice(0, 40) : '',
+      name: str(v.name, 40),
+      color: /^#[0-9a-f]{6}$/i.test(v.color) ? v.color.toLowerCase() : '#f2709a',
+      stock: Number(v.stock),
+      image: str(v.image, 200),
+    };
+    if (!variant.name) return { error: 'Every colour needs a name, e.g. "Dusk Blue"' };
+    if (names.has(variant.name.toLowerCase())) return { error: `The colour "${variant.name}" is listed twice` };
+    names.add(variant.name.toLowerCase());
+    if (!Number.isInteger(variant.stock) || variant.stock < 0) return { error: `Stock for "${variant.name}" must be 0 or more` };
+    variants.push(variant);
+  }
+  return { variants };
+}
+
+// Replaces a product's colour options, keeping the ids of colours that already existed
+// (so carts and past orders still point at the same colour).
+async function saveVariants(db, productId, variants, images, newImages) {
+  const { rows } = await db.query('SELECT id FROM product_variants WHERE product_id = $1', [productId]);
+  const existingIds = new Set(rows.map(r => r.id));
+  const keepIds = variants.map(v => v.id).filter(id => existingIds.has(id));
+  await db.query('DELETE FROM product_variants WHERE product_id = $1 AND NOT (id = ANY($2))', [productId, keepIds]);
+  for (const [i, v] of variants.entries()) {
+    const image = v.image.startsWith('new:') ? newImages[Number(v.image.slice(4))] || '' : images.includes(v.image) ? v.image : '';
+    if (existingIds.has(v.id)) {
+      await db.query('UPDATE product_variants SET name=$2, color=$3, stock=$4, image=$5, position=$6 WHERE id = $1', [v.id, v.name, v.color, v.stock, image, i]);
+    } else {
+      await db.query(
+        'INSERT INTO product_variants (id, product_id, name, color, stock, image, position) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [newId(), productId, v.name, v.color, v.stock, image, i],
+      );
+    }
+  }
+}
 
 function productFields(body) {
   const p = {
@@ -651,6 +757,11 @@ function productFields(body) {
   if (!Number.isInteger(p.price) || p.price <= 0) return { error: 'Price must be a whole number of rupees above 0' };
   if (p.mrp !== null && (!Number.isInteger(p.mrp) || p.mrp < p.price)) return { error: 'MRP must be a whole number, at least the price' };
   if (!Number.isInteger(p.shipping) || p.shipping < 0) return { error: 'Shipping must be 0 (free) or a whole number of rupees' };
+  const { variants, error } = variantFields(body.variants);
+  if (error) return { error };
+  p.variants = variants;
+  // With colours, the product's stock is the total of its colours.
+  if (variants.length) p.stock = variants.reduce((s, v) => s + v.stock, 0);
   if (!Number.isInteger(p.stock) || p.stock < 0) return { error: 'Stock must be 0 or more' };
   return { product: p };
 }
@@ -676,10 +787,11 @@ app.post('/api/admin/products', adminOnly, upload.array('images', config.maxProd
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [newId(), product.name, product.category, product.description, product.price, product.mrp, product.shipping, product.stock, product.active, JSON.stringify(images)],
     );
+    await saveVariants(db, rows[0].id, product.variants, images, images);
     if (req.body.notify === 'true' && product.active) {
       await notifyAllCustomers(db, 'New in the studio ✨', `"${product.name}" just arrived for ₹${product.price}. Come take a look!`, rows[0].id);
     }
-    return toProduct(rows[0]);
+    return (await productsWithVariants(rows, db))[0];
   });
   res.json({ product: saved });
 }));
@@ -697,7 +809,9 @@ app.put('/api/admin/products/:id', adminOnly, upload.array('images', config.maxP
     const existing = toProduct(rows[0]);
 
     const images = keep.filter(src => existing.images.includes(src));
-    for (const f of req.files || []) images.push(await saveImage(db, f.buffer, f.mimetype));
+    const newImages = [];
+    for (const f of req.files || []) newImages.push(await saveImage(db, f.buffer, f.mimetype));
+    images.push(...newImages);
     if (!images.length) return { code: 400, error: 'Please keep or add at least one photo' };
     if (images.length > config.maxProductImages) return { code: 400, error: `A product can have up to ${config.maxProductImages} photos` };
 
@@ -716,6 +830,7 @@ app.put('/api/admin/products/:id', adminOnly, upload.array('images', config.maxP
        WHERE id = $1 RETURNING *`,
       [existing.id, product.name, product.category, product.description, product.price, product.mrp, product.shipping, product.stock, product.active, JSON.stringify(images)],
     );
+    await saveVariants(db, existing.id, product.variants, images, newImages);
 
     if (req.body.notify === 'true' && product.active) {
       const back = existing.stock === 0 && product.stock > 0;
@@ -726,7 +841,7 @@ app.put('/api/admin/products/:id', adminOnly, upload.array('images', config.maxP
         existing.id,
       );
     }
-    return { product: toProduct(updated.rows[0]) };
+    return { product: (await productsWithVariants(updated.rows, db))[0] };
   });
   if (result.error) return res.status(result.code).json({ error: result.error });
   res.json(result);

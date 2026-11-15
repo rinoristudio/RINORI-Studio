@@ -135,7 +135,13 @@
               <h3><a href="/product?id=${p.id}">${esc(p.name)}</a></h3>
               <div class="price">${inr(p.price)}${p.mrp && p.mrp > p.price ? `<s>${inr(p.mrp)}</s>` : ''}</div>
               <div class="small muted">${p.shipping ? `+ ${inr(p.shipping)} shipping` : '✿ Free shipping'}</div>
-              <button class="btn small" data-add="${p.id}" ${out ? 'disabled' : ''}>${out ? 'Sold out' : 'Add to cart'}</button>
+              ${p.variants.length ? `
+                <div class="card-swatches" aria-label="${p.variants.length} colours">
+                  ${p.variants.slice(0, 8).map(v => `<a href="/product?id=${p.id}&colour=${esc(v.id)}" title="${esc(v.name)}${v.stock ? '' : ' (sold out)'}" class="${v.stock ? '' : 'out'}" style="background:${esc(v.color)}"></a>`).join('')}
+                  ${p.variants.length > 8 ? `<span class="small muted">+${p.variants.length - 8}</span>` : ''}
+                </div>
+                ${out ? '<button class="btn small" disabled>Sold out</button>' : `<a class="btn small" href="/product?id=${p.id}">Choose colour</a>`}`
+              : `<button class="btn small" data-add="${p.id}" ${out ? 'disabled' : ''}>${out ? 'Sold out' : 'Add to cart'}</button>`}
             </div>
           </article>`;
       }

@@ -207,6 +207,38 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .auth-art .jp { font-size: 1.1rem; }
 .auth-form { padding: 40px 36px; }
 .auth-form h2 { font-family: var(--font-display); font-weight: 400; color: var(--pink-500); font-size: 1.8rem; margin-bottom: 4px; }
+/* ---------- colour options ---------- */
+.colour-pick { margin: 18px 0 4px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border-radius: 999px; border: 2px solid var(--line); background: #fff; color: var(--berry); font: 600 .9rem var(--font-body); cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.swatch i { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(110, 51, 80, .2); flex: none; }
+.swatch:hover:not(:disabled) { border-color: var(--pink-400); }
+.swatch.active { border-color: var(--pink-500); box-shadow: 0 0 0 3px var(--pink-100); }
+.swatch:disabled { opacity: .45; cursor: not-allowed; text-decoration: line-through; }
+.card-swatches { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 2px; }
+.card-swatches a { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(110, 51, 80, .25); }
+.card-swatches a.out { opacity: .35; }
+.swatch-chip { display: inline-flex; align-items: center; gap: 6px; margin: 4px 10px 0 0; }
+.swatch-chip i { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(110, 51, 80, .25); display: inline-block; }
+.colour-row { display: grid; grid-template-columns: 46px 1fr 90px 140px 32px; gap: 8px; align-items: end; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 2px dashed var(--pink-100); }
+.colour-row input[type=color] { width: 46px; height: 42px; padding: 3px; cursor: pointer; }
+.colour-row .mini { display: flex; flex-direction: column; gap: 2px; font-size: .72rem; font-weight: 700; color: var(--muted); }
+.colour-remove { width: 30px; height: 30px; margin-bottom: 6px; border-radius: 50%; border: 0; background: var(--danger); color: #fff; cursor: pointer; font-size: 1rem; line-height: 1; }
+@media (max-width: 600px) {
+  /* Phone: colour + name + remove on top, stock and photo side by side below. */
+  .colour-row { grid-template-columns: 46px 1fr 1.4fr 32px; grid-template-areas: "sw name name x" "sw stock photo photo"; align-items: center; }
+  .colour-row input[type=color] { grid-area: sw; align-self: start; }
+  .colour-row [data-c-name] { grid-area: name; }
+  .colour-row .c-stock { grid-area: stock; }
+  .colour-row .c-photo { grid-area: photo; }
+  .colour-row .colour-remove { grid-area: x; margin: 0; }
+}
+
+.pw-wrap { position: relative; }
+.pw-wrap input { width: 100%; padding-right: 48px; }
+.pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+.pw-toggle:hover, .pw-toggle[aria-pressed="true"] { color: var(--pink-700); background: var(--pink-50); }
+.pw-toggle svg { width: 20px; height: 20px; }
 .guest-or { display: flex; align-items: center; gap: 12px; margin: 22px 0 14px; color: var(--muted); font-size: .85rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
 .guest-or::before, .guest-or::after { content: ''; flex: 1; border-top: 2px dashed var(--line); }
 .tabs { display: flex; background: var(--pink-100); border-radius: 999px; padding: 5px; margin-bottom: 24px; }
