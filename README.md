@@ -82,6 +82,18 @@ Render shows its own "waking up" page while a sleeping service starts, and the a
 
 The free plan gives 750 hours a month per Render account, enough for this one service to run all month. If you run other free services on the same account, they share those hours.
 
+## Bill emails (after payment)
+
+When Razorpay confirms a payment, the customer is emailed their bill (items, colour, shipping, total, payment ID, delivery address) with a link to view or download it online. The same bill is always in **My Account → View bill**, and admins can **Email / Resend bill** from each order.
+
+Email goes through **Brevo** over HTTPS (Render's free plan blocks normal SMTP email):
+
+1. Create a free account at https://www.brevo.com.
+2. **Senders & IP → Senders → Add a sender**: add `rinoristudio@gmail.com` and confirm the email Brevo sends you.
+3. **SMTP & API → API keys → Generate a new API key**.
+4. In Render → the shop service → **Environment**, add `BREVO_API_KEY` (the key) and `MAIL_FROM` (`rinoristudio@gmail.com`). Optional: `SHOP_URL` if the loading page's address isn't `https://rinori-studio-shop.onrender.com`.
+5. Admin → **Payments** shows "Bill emails on" when it's set up.
+
 ## 4. Connect Razorpay
 
 1. In the Razorpay Dashboard, go to **Account & Settings → API Keys** and generate a key. Start with **Test mode** keys (`rzp_test_…`) to try it without real money.

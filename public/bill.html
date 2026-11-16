@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your bill · Rinori Studio</title>
+  <link rel="icon" href="/assets/RINORI%20STUDIO%20logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Sacramento&family=Shrikhand&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .bill { max-width: 760px; margin: 28px auto 70px; background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 36px 40px; }
+    .bill-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; border-bottom: 2px dashed var(--line); padding-bottom: 20px; }
+    .bill-brand { display: flex; align-items: center; gap: 14px; }
+    .bill-brand img { width: 64px; height: 64px; object-fit: contain; }
+    .bill-brand b { font-family: var(--font-display); font-weight: 400; font-size: 1.5rem; color: var(--pink-500); display: block; }
+    .bill-title { text-align: right; }
+    .bill-title h1 { font-family: var(--font-display); font-weight: 400; color: var(--berry); font-size: 1.6rem; margin: 0; }
+    .paid-stamp { display: inline-block; margin-top: 6px; padding: 3px 12px; border: 2px solid var(--ok); color: var(--ok); border-radius: 999px; font-weight: 700; font-size: .8rem; letter-spacing: .12em; }
+    .bill-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 22px 0; font-size: .92rem; }
+    .bill-meta h3 { font-size: .75rem; letter-spacing: .14em; text-transform: uppercase; color: var(--pink-700); margin: 0 0 6px; }
+    .bill table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+    .bill th { text-align: left; font-size: .75rem; letter-spacing: .12em; color: var(--pink-700); border-bottom: 2px solid var(--line); padding: 8px 6px; }
+    .bill td { border-bottom: 1px solid var(--pink-100); padding: 10px 6px; vertical-align: top; }
+    .bill .num { text-align: right; white-space: nowrap; }
+    .bill .totals td { border: 0; padding: 5px 6px; }
+    .bill .totals .grand td { font-weight: 700; font-size: 1.1rem; border-top: 2px solid var(--line); padding-top: 10px; }
+    .bill-foot { margin-top: 26px; padding-top: 16px; border-top: 2px dashed var(--line); font-size: .85rem; text-align: center; color: var(--berry); }
+    .bill-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+    @media (max-width: 640px) {
+      .bill { padding: 24px 18px; margin-top: 16px; }
+      .bill-title { text-align: left; }
+      .bill-meta { grid-template-columns: 1fr; }
+    }
+    @media print {
+      body { background: #fff !important; }
+      .site-header, .announce, .site-footer, .petals, .bill-actions, .no-print { display: none !important; }
+      .bill { box-shadow: none; margin: 0 auto; padding: 0; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <p class="no-print" style="margin:24px 0 0"><a href="/account#orders">← My orders</a></p>
+    <div data-root><p class="empty">Loading your bill…</p></div>
+  </main>
+
+  <script src="/js/common.js"></script>
+  <script>
+    (async () => {
+      const me = await requireUser();
+      renderHeader(me, 'account');
+      renderFooter();
+
+      const root = document.querySelector('[data-root]');
+      let o;
+      try {
+        ({ order: o } = await api('/api/orders/' + encodeURIComponent(qs('id') || '')));
+      } catch (err) {
+        root.innerHTML = `<div class="empty"><div class="ico">🧾</div>${esc(err.message)}<br><br><a class="btn" href="/account#orders">My orders</a></div>`;
+        return;
+      }
+      document.title = `Bill ${o.number} · Rinori Studio`;
+      const a = o.address;
+      const paidAt = (o.history.find(h => h.status === 'Paid') || {}).at || o.createdAt;
+
+      root.innerHTML = `
+        <article class="bill" aria-label="Bill for order ${esc(o.number)}">
+          <div class="bill-head">
+            <div class="bill-brand">
+              <img src="${LOGO}" alt="">
+              <div><b>Rinori Studio</b><span class="small">Handmade with love · ${esc(CONTACT.email)}</span></div>
+            </div>
+            <div class="bill-title">
+              <h1>Bill</h1>
+              <div class="small">Order <b>${esc(o.number)}</b></div>
+              <span class="paid-stamp">PAID</span>
+            </div>
+          </div>
+
+          <div class="bill-meta">
+            <div>
+              <h3>Payment</h3>
+              ${fmtDate(paidAt)}<br>Paid online via Razorpay
+              ${o.paymentRef ? `<br><span class="small">Payment ID ${esc(o.paymentRef)}</span>` : ''}
+            </div>
+            <div>
+              <h3>Billed to</h3>
+              ${esc(o.customer.name)}<br>${esc(o.customer.email)}${o.customer.phone ? `<br>${esc(o.customer.phone)}` : ''}
+            </div>
+            <div>
+              <h3>Ship to</h3>
+              ${esc(a.fullName)}<br>${formatAddress(a)}<br>${esc(a.phone)}
+            </div>
+          </div>
+
+          <table>
+            <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Amount</th></tr></thead>
+            <tbody>
+              ${o.items.map(i => `
+                <tr>
+                  <td>${esc(i.name)}${i.color ? `<div class="small">Colour: ${esc(i.color)}</div>` : ''}</td>
+                  <td class="num">${i.qty}</td>
+                  <td class="num">${inr(i.price)}</td>
+                  <td class="num">${inr(i.price * i.qty)}</td>
+                </tr>`).join('')}
+            </tbody>
+            <tbody class="totals">
+              <tr><td colspan="3" class="num">Subtotal</td><td class="num">${inr(o.subtotal)}</td></tr>
+              <tr><td colspan="3" class="num">Speed Post shipping</td><td class="num">${o.shipping ? inr(o.shipping) : 'Free'}</td></tr>
+              <tr class="grand"><td colspan="3" class="num">Total paid</td><td class="num">${inr(o.total)}</td></tr>
+            </tbody>
+          </table>
+
+          <div class="bill-foot">
+            Thank you for shopping small! Questions about this order? Write to ${esc(CONTACT.email)} or DM @${esc(CONTACT.instagram)}.
+          </div>
+          <div class="bill-actions">
+            <button class="btn" type="button" data-print>Download / print bill</button>
+            <a class="btn ghost" href="/account#orders">Back to my orders</a>
+          </div>
+        </article>`;
+      root.querySelector('[data-print]').addEventListener('click', () => window.print());
+    })();
+  </script>
+</body>
+</html>

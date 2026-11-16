@@ -56,7 +56,7 @@
               <div class="order-items">
                 ${o.items.map(i => `<div class="it"><img src="${esc(i.image)}" alt=""><div>${esc(i.name)}${i.color ? ` <span class="pill">${esc(i.color)}</span>` : ''} <span class="muted">× ${i.qty}</span></div><b style="margin-left:auto">${inr(i.price * i.qty)}</b></div>`).join('')}
               </div>
-              <div class="small">Total <b>${inr(o.total)}</b>${o.shipping ? ` (incl. ${inr(o.shipping)} Speed Post)` : ''} · Paid by ${esc(o.paymentMethod)}${o.paymentRef ? ` · Ref ${esc(o.paymentRef)}` : ''}</div>
+              <div class="small">Total <b>${inr(o.total)}</b>${o.shipping ? ` (incl. ${inr(o.shipping)} Speed Post)` : ''} · Paid by ${esc(o.paymentMethod)}${o.paymentRef ? ` · Ref ${esc(o.paymentRef)}` : ''} · <a href="/bill?id=${encodeURIComponent(o.id)}">🧾 View bill</a></div>
               ${o.trackingNumber ? `<div class="notice small" style="margin:10px 0 0">📮 Speed Post tracking no: <b>${esc(o.trackingNumber)}</b> · <a href="https://www.indiapost.gov.in/" target="_blank" rel="noopener">Track on India Post</a></div>` : ''}
               <div class="small muted">Deliver to ${esc(o.address.fullName)}, ${formatAddress(o.address)}</div>
               <ul class="timeline">

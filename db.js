@@ -138,6 +138,9 @@ CREATE TABLE IF NOT EXISTS product_variants (
   position   INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS product_variants_product_idx ON product_variants(product_id);
+
+-- v5: bills emailed to customers
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS bill_emailed_at TIMESTAMPTZ;
 `;
 
 module.exports = { pool, query, transaction, SCHEMA };

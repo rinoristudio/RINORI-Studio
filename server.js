@@ -9,6 +9,8 @@ const config = require('./config');
 const { query, transaction, SCHEMA } = require('./db');
 const { hashPassword, checkPassword } = require('./passwords');
 const razorpay = require('./razorpay');
+const mailer = require('./mailer');
+const { billEmail } = require('./bill');
 
 const SESSION_DAYS = 30;
 
@@ -93,6 +95,7 @@ const toOrder = r => ({
   id: r.id, number: r.number, userId: r.user_id, customer: r.customer, address: r.address, items: r.items,
   subtotal: r.subtotal, shipping: r.shipping, total: r.total, paymentMethod: r.payment_method, note: r.note,
   paymentRef: r.payment_ref, trackingNumber: r.tracking_number, status: r.status, history: r.history, createdAt: r.created_at,
+  billEmailedAt: r.bill_emailed_at,
 });
 
 const toNotification = r => ({
@@ -152,7 +155,7 @@ async function saveImage(db, buffer, mime) {
 }
 
 function paymentStatus() {
-  return { ready: razorpay.isConfigured(), mode: razorpay.mode(), webhook: razorpay.webhookConfigured() };
+  return { ready: razorpay.isConfigured(), mode: razorpay.mode(), webhook: razorpay.webhookConfigured(), email: mailer.isConfigured() };
 }
 
 // ---------- startup: schema + seed ----------
@@ -521,13 +524,36 @@ app.post('/api/checkout', auth, h(async (req, res) => {
   });
 }));
 
-// Marks an unpaid order as Paid exactly once, takes the stock and tells the customer.
+// Emails the customer their bill and records when it went out. Never throws: a failed
+// email must not undo or block a paid order (the admin can resend it).
+async function emailBill(order) {
+  if (!mailer.isConfigured()) return { sent: false, reason: 'Email is not set up yet' };
+  try {
+    const { subject, html, text } = billEmail(order);
+    await mailer.sendEmail({ to: order.customer.email, toName: order.customer.name, subject, html, text });
+    await query('UPDATE orders SET bill_emailed_at = now() WHERE id = $1', [order.id]);
+    return { sent: true };
+  } catch (err) {
+    console.error(`Bill email for ${order.number} failed:`, err.message);
+    return { sent: false, reason: err.message };
+  }
+}
+
+// Marks an unpaid order as Paid exactly once, then emails the bill (only that first time).
 async function markPaid(razorpayOrderId, paymentId) {
+  const result = await markPaidInDb(razorpayOrderId, paymentId);
+  if (!result) return null;
+  if (result.justPaid) emailBill(result.order); // in the background: the customer isn't kept waiting
+  return result.order;
+}
+
+// Marks an unpaid order as Paid exactly once, takes the stock and tells the customer.
+async function markPaidInDb(razorpayOrderId, paymentId) {
   return transaction(async db => {
     const { rows } = await db.query('SELECT * FROM orders WHERE razorpay_order_id = $1 FOR UPDATE', [razorpayOrderId]);
     if (!rows[0]) return null;
     const order = toOrder(rows[0]);
-    if (order.status !== UNPAID) return order; // already handled (verify + webhook both arrive)
+    if (order.status !== UNPAID) return { order, justPaid: false }; // already handled (verify + webhook both arrive)
 
     let short = false;
     for (const item of order.items) {
@@ -546,7 +572,7 @@ async function markPaid(razorpayOrderId, paymentId) {
       await notify(db, paid.userId, `Order ${paid.number} placed 🎀`,
         `Payment of ₹${paid.total} received. Thank you! We'll pack your order with love and share the Speed Post tracking number.`, { orderId: paid.id });
     }
-    return paid;
+    return { order: paid, justPaid: true };
   });
 }
 
@@ -598,6 +624,16 @@ app.post('/api/razorpay/webhook', express.raw({ type: 'application/json', limit:
 app.get('/api/orders', auth, h(async (req, res) => {
   const { rows } = await query('SELECT * FROM orders WHERE user_id = $1 AND status <> $2 ORDER BY created_at DESC', [req.user.id, UNPAID]);
   res.json({ orders: rows.map(toOrder) });
+}));
+
+// One paid order, for its bill page: the customer's own, or any for the admin.
+app.get('/api/orders/:id', auth, h(async (req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM orders WHERE id = $1 AND status <> $2 AND (user_id = $3 OR $4)',
+    [req.params.id, UNPAID, req.user.id, req.user.role === 'admin'],
+  );
+  if (!rows[0]) return res.status(404).json({ error: 'Order not found' });
+  res.json({ order: toOrder(rows[0]) });
 }));
 
 // Changes an order's status inside a transaction, returning stock when it gets cancelled
@@ -659,6 +695,15 @@ app.get('/api/admin/stats', adminOnly, h(async (req, res) => {
 app.get('/api/admin/orders', adminOnly, h(async (req, res) => {
   const { rows } = await query("SELECT * FROM orders WHERE status <> 'Awaiting payment' ORDER BY created_at DESC");
   res.json({ orders: rows.map(toOrder), statuses: ORDER_STATUSES });
+}));
+
+// Send (or resend) an order's bill to the customer's email.
+app.post('/api/admin/orders/:id/email-bill', adminOnly, h(async (req, res) => {
+  const { rows } = await query("SELECT * FROM orders WHERE id = $1 AND status <> 'Awaiting payment'", [req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'Order not found' });
+  const result = await emailBill(toOrder(rows[0]));
+  if (!result.sent) return res.status(502).json({ error: `Bill not sent: ${result.reason}` });
+  res.json({ ok: true, to: rows[0].customer.email });
 }));
 
 app.put('/api/admin/orders/:id', adminOnly, h(async (req, res) => {

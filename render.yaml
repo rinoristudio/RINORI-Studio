@@ -18,6 +18,10 @@ services:
         sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false   # the secret you choose when adding the webhook
+      - key: BREVO_API_KEY
+        sync: false   # Brevo -> SMTP & API -> API keys (emails the bill after payment)
+      - key: MAIL_FROM
+        sync: false   # a sender address verified in Brevo, e.g. rinoristudio@gmail.com
 
   # Always-on loading page. Share THIS site's address with customers: it shows a
   # Rinori-themed loading screen while the shop wakes up, then sends them in.
