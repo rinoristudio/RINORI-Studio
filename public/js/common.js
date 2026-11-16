@@ -288,3 +288,9 @@ function setBusy(btn, busy, text) {
     btn.disabled = false;
   }
 }
+
+// Keeps the Rinori loading page on this device, so on later visits it shows instead of
+// Render's "waking up" screen while the server starts (see /sw.js).
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
