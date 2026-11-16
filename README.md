@@ -82,6 +82,10 @@ Render shows its own "waking up" page while a sleeping service starts, and the a
 
 The free plan gives 750 hours a month per Render account, enough for this one service to run all month. If you run other free services on the same account, they share those hours.
 
+## Bills
+
+After paying, customers can view and download their bill (items, colour, shipping, total, Razorpay payment ID, delivery address) at `/bill?id=…`: from the thank-you screen, **My Account → View bill**, or by admins from each order. **Download / print bill** saves it as a PDF.
+
 ## 4. Connect Razorpay
 
 1. In the Razorpay Dashboard, go to **Account & Settings → API Keys** and generate a key. Start with **Test mode** keys (`rzp_test_…`) to try it without real money.

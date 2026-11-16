@@ -163,8 +163,10 @@
             <h2 class="display sm" style="font-size:2rem">Order Placed</h2>
             <p>Payment of <b>${inr(order.total)}</b> received. Your order number is <b>${esc(order.number)}</b>.</p>
             <p class="muted">We'll pack it with love and send it by India Post Speed Post. The tracking number will appear in your account.</p>
+            <p class="small">🧾 Your bill is ready to view and download, and it's always in My Account.</p>
             <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:20px">
-              <a class="btn" href="/account#orders">Track my order</a>
+              <a class="btn" href="/bill?id=${encodeURIComponent(order.id)}">View bill</a>
+              <a class="btn ghost" href="/account#orders">Track my order</a>
               <a class="btn ghost" href="/home">Keep shopping</a>
             </div>
           </div>`;

@@ -600,6 +600,16 @@ app.get('/api/orders', auth, h(async (req, res) => {
   res.json({ orders: rows.map(toOrder) });
 }));
 
+// One paid order, for its bill page: the customer's own, or any for the admin.
+app.get('/api/orders/:id', auth, h(async (req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM orders WHERE id = $1 AND status <> $2 AND (user_id = $3 OR $4)',
+    [req.params.id, UNPAID, req.user.id, req.user.role === 'admin'],
+  );
+  if (!rows[0]) return res.status(404).json({ error: 'Order not found' });
+  res.json({ order: toOrder(rows[0]) });
+}));
+
 // Changes an order's status inside a transaction, returning stock when it gets cancelled
 // and taking it back again if a cancelled order is reopened.
 async function setOrderStatus(db, order, status, message) {

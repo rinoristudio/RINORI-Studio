@@ -273,7 +273,8 @@ function addPasswordToggles(root = document) {
 }
 
 function formatAddress(a) {
-  return [a.house, a.street, a.landmark && 'Near ' + a.landmark, a.city, a.district, `${a.state} - ${a.pincode}`]
+  const landmark = a.landmark && (/^near\b/i.test(a.landmark) ? a.landmark : 'Near ' + a.landmark);
+  return [a.house, a.street, landmark, a.city, a.district, `${a.state} - ${a.pincode}`]
     .filter(Boolean).map(esc).join(', ');
 }
 

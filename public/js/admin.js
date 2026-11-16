@@ -142,6 +142,7 @@
             <h4 style="margin-top:12px">Payment</h4>
             ${esc(o.paymentMethod)} · <b>${inr(o.total)}</b>${o.paymentRef ? `<br>Payment ref: <b>${esc(o.paymentRef)}</b>` : ''}
             ${o.status === 'Paid' ? '<br><span class="small" style="color:var(--ok)">✅ Paid via Razorpay · ready to pack</span>' : ''}
+            <br><a class="btn small soft" href="/bill?id=${encodeURIComponent(o.id)}" target="_blank" rel="noopener" style="margin-top:8px">🧾 View bill</a>
             ${o.trackingNumber ? `<h4 style="margin-top:12px">Speed Post</h4><b>${esc(o.trackingNumber)}</b>` : ''}
           </div>
           <div class="box">
