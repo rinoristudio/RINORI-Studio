@@ -73,9 +73,6 @@
         ${row(p.webhook, p.webhook ? 'Webhook connected' : 'Webhook not set (recommended)',
           p.webhook ? 'Payments are confirmed even if a customer closes the page right after paying.'
             : `In Razorpay → Webhooks add <b>${esc(p.webhookUrl)}</b> with events <b>payment.captured</b> and <b>order.paid</b>, choose a secret, and save the same secret in Render as RAZORPAY_WEBHOOK_SECRET.`)}
-        ${row(p.email, p.email ? 'Bill emails on' : 'Bill emails not set up',
-          p.email ? 'Each customer gets their bill by email as soon as their payment is confirmed.'
-            : 'Add BREVO_API_KEY and MAIL_FROM (a sender verified in Brevo) in Render → Environment. Customers can still see their bill online in My Account.')}
         <p class="small muted">Refunds: open the payment in your Razorpay dashboard and click Refund, then set the order here to Cancelled (stock is returned automatically).</p>`;
     },
 
@@ -145,10 +142,7 @@
             <h4 style="margin-top:12px">Payment</h4>
             ${esc(o.paymentMethod)} · <b>${inr(o.total)}</b>${o.paymentRef ? `<br>Payment ref: <b>${esc(o.paymentRef)}</b>` : ''}
             ${o.status === 'Paid' ? '<br><span class="small" style="color:var(--ok)">✅ Paid via Razorpay · ready to pack</span>' : ''}
-            <h4 style="margin-top:12px">Bill</h4>
-            <span class="small">${o.billEmailedAt ? `📧 Emailed ${fmtDate(o.billEmailedAt)}` : 'Not emailed yet'}</span><br>
-            <a class="btn small soft" href="/bill?id=${encodeURIComponent(o.id)}" target="_blank" rel="noopener" style="margin-top:6px">View bill</a>
-            <button class="btn small soft" type="button" data-email-bill="${o.id}" style="margin-top:6px">${o.billEmailedAt ? 'Resend bill' : 'Email bill'}</button>
+            <br><a class="btn small soft" href="/bill?id=${encodeURIComponent(o.id)}" target="_blank" rel="noopener" style="margin-top:8px">🧾 View bill</a>
             ${o.trackingNumber ? `<h4 style="margin-top:12px">Speed Post</h4><b>${esc(o.trackingNumber)}</b>` : ''}
           </div>
           <div class="box">
@@ -377,16 +371,6 @@
       } else if (t.hasAttribute('data-remove-colour')) {
         t.closest('[data-colour-row]').remove();
         updateStockField();
-      } else if (t.dataset.emailBill) {
-        setBusy(t, true, 'Sending…');
-        try {
-          const { to } = await api(`/api/admin/orders/${t.dataset.emailBill}/email-bill`, { method: 'POST' });
-          toast(`Bill emailed to ${to}`);
-          const order = state.orders.find(o => o.id === t.dataset.emailBill);
-          if (order) order.billEmailedAt = new Date().toISOString();
-        } finally {
-          if (t.isConnected) setBusy(t, false);
-        }
       } else if (t.dataset.messageUser) {
         state.messageTo = t.dataset.messageUser;
         go('message');
