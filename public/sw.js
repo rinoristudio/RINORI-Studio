@@ -4,7 +4,7 @@
 // The page then waits for /healthz and loads what they asked for. It only handles page
 // loads and the waking page's own logo: API calls, product images, health checks and
 // everything else go straight to the network.
-const CACHE = 'rinori-waking-v3';
+const CACHE = 'rinori-waking-v4';
 const WAKING = '/waking.html';
 const PRECACHE = [WAKING, '/assets/RINORI%20STUDIO%20logo.png'];
 // A real page normally arrives well within this; longer usually means the server is asleep.
@@ -45,10 +45,12 @@ self.addEventListener('fetch', event => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), WAIT_MS);
     try {
-      // redirect: 'manual' lets the browser follow any redirect itself, as for a normal page load.
-      const res = await fetch(req.url, { signal: ctrl.signal, credentials: 'same-origin', redirect: 'manual', cache: 'no-store' });
-      // Render's own "waking up" page is marked with this header: show ours instead.
-      if (res.headers.has('x-render-routing')) return wakingPage();
+      const res = await fetch(req.url, { signal: ctrl.signal, credentials: 'same-origin', cache: 'no-store' });
+      // Only the real shop stamps X-Rinori on its responses. Anything else is Render's
+      // "waking up" screen (or another stand-in page), so show ours instead.
+      if (!res.headers.has('X-Rinori')) return wakingPage();
+      // The shop redirected: send the browser on to that address so the bar shows it.
+      if (res.redirected) return Response.redirect(res.url, 302);
       return res;
     } catch {
       return wakingPage(); // asleep (no answer in time) or offline

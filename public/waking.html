@@ -133,8 +133,8 @@
       const timer = setTimeout(() => ctrl.abort(), 10000);
       try {
         const res = await fetch(APP_URL + '/healthz?t=' + Date.now(), { cache: 'no-store', signal: ctrl.signal });
-        // Render's own waking page carries x-render-routing; only the real shop answers "ok".
-        return res.ok && !res.headers.has('x-render-routing') && (await res.text()).trim() === 'ok';
+        // Only the real shop stamps X-Rinori and answers "ok" (Render's waking page does neither).
+        return res.ok && res.headers.has('X-Rinori') && (await res.text()).trim() === 'ok';
       } catch {
         return false; // asleep, waking, or a network hiccup: try again
       } finally {
