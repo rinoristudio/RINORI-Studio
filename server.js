@@ -251,6 +251,9 @@ const upload = multer({
 
 const app = express();
 app.set('trust proxy', 1); // Render terminates HTTPS in front of the app
+// Marks every response as coming from the real shop. The service worker (public/sw.js) treats
+// any page WITHOUT this mark (Render's "waking up" screen, whatever form it takes) as "asleep".
+app.use((req, res, next) => { res.set('X-Rinori', '1'); next(); });
 app.use((req, res, next) => (req.path === '/api/razorpay/webhook' ? next() : express.json({ limit: '100kb' })(req, res, next)));
 
 // The loading page (a separate always-on static site) polls this while the service wakes up.
